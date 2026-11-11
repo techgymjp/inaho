@@ -22,11 +22,13 @@ export function terrainHeight(x, z) {
   h += nearFlat * (1.5 + N.fbm(x / 90, z / 90, 3) * 2.5) * (1 - rise);
   // 低い里山（丸みのある丘）
   const northH = smooth(0.3, 0.8, -z / Math.max(r, 1));
-  const hills = Math.max(0, N.fbm(x / 380 + 5, z / 380, 3) + 0.15) * 110 * smooth(160, 420, r) * smooth(160, 420, rr) * (1 - 0.85 * northH);
+  const hills = Math.max(0, N.fbm(x / 380 + 5, z / 380, 3) + 0.15) * 110 * smooth(160, 420, r) * smooth(160, 420, rr) * (1 - 0.85 * northH)
+    // 北の中景：森におおわれた低い丘の連なり（線路と集落の奥）
+    + northH * smooth(1100, 1600, r) * (1 - smooth(3600, 5000, r)) * (22 + 40 * (N.fbm(x / 420 + 2, z / 420, 3) * 0.5 + 0.5));
   // 奥山（なだらかな山並み）。北側は低くして名峰を引き立てる
   const m = N.fbm(x / 1100, z / 1100, 3) * 0.5 + 0.5;
   const north = smooth(0.35, 0.85, -z / Math.max(r, 1));
-  const mountain = smooth(250, 500, r) * Math.pow(rise, 1.2) * (200 + 650 * Math.pow(m, 1.6)) * (1 - 0.75 * north);
+  const mountain = smooth(250, 500, r) * Math.pow(rise, 1.2) * (200 + 650 * Math.pow(m, 1.6)) * (1 - 0.97 * north);
   const base = h + hills + mountain + bandai(x, z) * smooth(200, 900, r);
   // 鉄道の通り道は平らにならす（切通し）。遠くの山にはトンネルで入る
   const corridor = smooth(34, 10, Math.abs(z - RAIL_Z)) * smooth(1500, 1000, Math.abs(x));
@@ -35,7 +37,7 @@ export function terrainHeight(x, z) {
 export const RAIL_Z = -150;
 
 // 北にそびえる名峰（参考写真の磐梯山の姿）：とがった主峰と、右へ延びる稜線の先の副峰
-const P1 = [-350, -4300], P2 = [1350, -4550];
+const P1 = [-500, -9000], P2 = [2300, -9400];
 function bandai(x, z) {
   const d1 = Math.hypot(x - P1[0], z - P1[1]);
   const d2 = Math.hypot(x - P2[0], z - P2[1]);
@@ -43,10 +45,10 @@ function bandai(x, z) {
   const vx = P2[0] - P1[0], vz = P2[1] - P1[1];
   const tt = clamp(((x - P1[0]) * vx + (z - P1[1]) * vz) / (vx * vx + vz * vz));
   const ds = Math.hypot(x - P1[0] - vx * tt, z - P1[1] - vz * tt);
-  const main = 1300 * Math.exp(-Math.pow(d1 / 1250, 1.15));
-  const sub = 880 * Math.exp(-Math.pow(d2 / 1100, 1.35));
-  const ridge = (760 - 120 * Math.sin(tt * Math.PI)) * Math.exp(-Math.pow(ds / 950, 1.5)) * smooth(0, 0.15, tt) * smooth(1, 0.85, tt);
-  const skirt = 300 * Math.exp(-Math.pow(Math.hypot((x - 400) / 1.6, z + 4200) / 3000, 2)); // 広い裾野
+  const main = 1350 * Math.exp(-Math.pow(d1 / 2100, 1.15));
+  const sub = 900 * Math.exp(-Math.pow(d2 / 1800, 1.35));
+  const ridge = (760 - 120 * Math.sin(tt * Math.PI)) * Math.exp(-Math.pow(ds / 1550, 1.5)) * smooth(0, 0.15, tt) * smooth(1, 0.85, tt);
+  const skirt = 320 * Math.exp(-Math.pow(Math.hypot((x - 900) / 1.6, z + 8800) / 4800, 2)); // 広い裾野
   const bumps = 1 + 0.06 * N.fbm(x / 500, z / 500, 3);
   return (Math.max(main, sub, ridge) + skirt) * bumps;
 }
@@ -160,6 +162,10 @@ export function createLandscape(scene, renderer, quality) {
   clouds.renderOrder = -1;
   scene.add(clouds);
 
+  // ---------- 入道雲（遠くの山の向こうにわく積雲） ----------
+  const cumulus = buildCumulus();
+  scene.add(cumulus.group);
+
   // ---------- 光 ----------
   const sun = new THREE.DirectionalLight(0xffffff, 3);
   sun.castShadow = true;
@@ -230,6 +236,9 @@ export function createLandscape(scene, renderer, quality) {
   const village = buildVillage();
   group.add(village.group);
 
+  // ---------- 北の丘のふもとの集落 ----------
+  group.add(buildHamlet());
+
   // ---------- 鉄道（遠くを走るローカル線） ----------
   const railway = buildRailway();
   group.add(railway.group);
@@ -237,7 +246,7 @@ export function createLandscape(scene, renderer, quality) {
   // ---------- 季節の色 ----------
   const C = (r, g, b) => new THREE.Color(r, g, b);
   const col = {
-    conifer: hex('#2f6e3c'), broadSummer: hex('#4f9a3c'), broadFresh: hex('#8fcf55'),
+    conifer: hex('#24582f'), broadSummer: hex('#3d8a34'), broadFresh: hex('#82c650'),
     red: hex('#d4542a'), orange: hex('#e58a30'), yellow: hex('#e9c443'),
     bare: hex('#8a7a62'), rock: hex('#8c8f96'), snow: hex('#f2f6fb'),
     grassSummer: hex('#6cb83f'), grassSpring: hex('#93d052'), grassDry: hex('#b9a564'),
@@ -340,11 +349,12 @@ export function createLandscape(scene, renderer, quality) {
     cu.uDark.value = 1 - smooth(-0.16, 0.02, sinEl);
     cu.uCam.value.copy(camera.position);
     clouds.position.x = camera.position.x; clouds.position.z = camera.position.z;
+    cumulus.update(time, wx, cu.uSunCol.value, cu.uAmb.value, day, camera);
 
     // 霧（遠くの山ほど空色にかすむ）
     fogColor.copy(su.uHorizon.value).lerp(su.uZenith.value, 0.15);
     scene.fog.color.copy(fogColor);
-    scene.fog.density = 0.0001 + over * 0.00012 + wx.haze * 0.0012 + wx.precip * 0.0025;
+    scene.fog.density = 0.00005 + over * 0.00012 + wx.haze * 0.0012 + wx.precip * 0.0025;
 
     // 空からの光（半球光）
     hemi.color.copy(su.uZenith.value).lerp(hex('#ffffff'), 0.45).multiplyScalar(0.25 + 0.75 * day);
@@ -399,18 +409,17 @@ function buildForest(quality) {
     tries++;
     // 盆地の縁から山腹へ（近いほど密）
     const ang = N.rnd() * Math.PI * 2;
-    const r = 220 + Math.pow(N.rnd(), 1.5) * 1600;
+    const r = 300 + Math.pow(N.rnd(), 1.3) * 1800;
     const x = Math.cos(ang) * r / 0.8, z = Math.sin(ang) * r;
     if (Math.abs(x) < 70 && Math.abs(z) < 60) continue; // 田んぼの近くは空ける
     if (Math.abs(z - RAIL_Z) < 22 && Math.abs(x) < 1600) continue; // 線路沿い
-    if (z < 0 && r < 700 && Math.abs(x) < -z * 0.9 && N.rnd() > 0.15) continue; // 北の眺め（名峰と線路）を開ける
     const y = terrainHeight(x, z);
-    if (y < 3 && N.rnd() > 0.05) continue;
+    if (y < 6) continue; // 平地には植えない（丘や山を森で覆う）
     if (y > 1250) continue;
     const slope = Math.abs(terrainHeight(x + 4, z) - y) + Math.abs(terrainHeight(x, z + 4) - y);
     if (slope > 6) continue;
     const coniferP = clamp(0.5 + N.fbm(x / 350 + 9, z / 350, 3) * 1.4 + (y - 300) / 900);
-    const s = 6 + N.rnd() * 8;
+    const s = 7 + N.rnd() * 5;
     const item = { x, y, z, s, rot: N.rnd() * 6.28, hue: N.rnd(), h: y };
     (N.rnd() < coniferP ? placeC : placeB).push(item);
   }
@@ -683,36 +692,37 @@ function buildRailway() {
   }
   group.add(xing);
 
-  // 2両編成の気動車（クリームに緑の帯）
+  // 2両編成の気動車（ステンレス車体に青緑の窓帯、黄色いドア）
   const train = new THREE.Group();
-  const cream = toon({ color: '#efe6c8' }), green = toon({ color: '#3f8f3c' }), roofM = toon({ color: '#9a9a96' });
-  const under = toon({ color: '#3a3a3a' });
-  const winMat = new THREE.MeshBasicMaterial({ color: '#26323a' });
+  const steel = toon({ color: '#c9ced3' }), winBand = toon({ color: '#3b4048' }), teal = toon({ color: '#27b3b8' });
+  const yellow = toon({ color: '#f2c81e' }), blue = toon({ color: '#2f5fb3' }), roofM = toon({ color: '#8d9298' });
+  const under = toon({ color: '#2e2f33' });
+  const winMat = new THREE.MeshBasicMaterial({ color: '#1f2a33' });
   const lightMat = new THREE.MeshBasicMaterial({ color: '#fff4c0' });
   const CAR = 20, GAP = 0.8;
+  const box = (w, h, d, m, x, y, z = 0) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); return o; };
   for (let c = 0; c < 2; c++) {
     const car = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(CAR, 2.6, 2.9), cream);
-    body.position.y = 2.3;
-    const band = new THREE.Mesh(new THREE.BoxGeometry(CAR + 0.02, 0.55, 2.94), green);
-    band.position.y = 1.5;
-    const band2 = new THREE.Mesh(new THREE.BoxGeometry(CAR + 0.02, 0.18, 2.94), green);
-    band2.position.y = 3.25;
-    const roof = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, CAR, 12, 1, false, -Math.PI / 2.6, Math.PI / 1.3), roofM);
-    roof.rotation.z = Math.PI / 2;
-    roof.scale.set(1, 1, 0.92);
-    roof.position.y = 2.95;
-    const wins = new THREE.Mesh(new THREE.BoxGeometry(CAR - 2.4, 0.85, 2.96), winMat);
-    wins.position.y = 2.55;
-    const bogie = new THREE.Mesh(new THREE.BoxGeometry(CAR - 2, 0.8, 2.2), under);
-    bogie.position.y = 0.75;
-    car.add(body, band, band2, roof, wins, bogie);
-    // 前照灯
-    for (const end of [-1, 1]) for (const dz of [-0.8, 0.8]) {
-      const hl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.22, 0.32), lightMat);
-      hl.position.set(end * (CAR / 2 + 0.03), 1.75, dz);
-      car.add(hl);
+    car.add(box(CAR, 2.7, 2.9, steel, 0, 2.35));                 // 車体
+    car.add(box(CAR + 0.02, 0.95, 2.94, winBand, 0, 2.55));         // 窓まわりの黒
+    car.add(box(CAR + 0.03, 0.42, 2.95, teal, 0, 1.6));          // 腰の青緑帯
+    car.add(box(CAR - 1.6, 0.7, 2.96, winMat, 0, 2.6));          // 窓
+    car.add(box(CAR, 0.5, 2.6, roofM, 0, 3.85));                 // 屋根
+    car.add(box(1.2, 0.5, 1.4, roofM, CAR * 0.25, 4.25));         // 屋根上の機器
+    // 黄色い両開きドア（片側3か所）
+    for (const dx of [-0.36, 0, 0.36]) {
+      car.add(box(1.4, 2.0, 2.97, yellow, dx * CAR, 2.05));
+      car.add(box(0.5, 0.7, 2.98, winMat, dx * CAR - 0.33, 2.6));
+      car.add(box(0.5, 0.7, 2.98, winMat, dx * CAR + 0.33, 2.6));
     }
+    // 運転台側の青い前面と黄色い前面
+    const end = c === 0 ? -1 : 1;
+    car.add(box(0.12, 2.7, 2.9, yellow, end * (CAR / 2 + 0.04), 2.35));
+    car.add(box(0.14, 0.9, 1.9, winMat, end * (CAR / 2 + 0.06), 2.75));
+    car.add(box(0.13, 2.7, 0.35, blue, end * (CAR / 2 + 0.05), 2.35, 1.3));
+    car.add(box(0.13, 2.7, 0.35, blue, end * (CAR / 2 + 0.05), 2.35, -1.3));
+    car.add(box(CAR - 2, 0.8, 2.2, under, 0, 0.75));             // 床下機器・台車
+    for (const dz of [-0.8, 0.8]) car.add(box(0.06, 0.22, 0.32, lightMat, end * (CAR / 2 + 0.12), 1.55, dz));
     car.position.x = (c - 0.5) * (CAR + GAP);
     car.traverse(o => { if (o.isMesh) o.castShadow = false; });
     train.add(car);
@@ -741,4 +751,99 @@ function buildRailway() {
     if (Math.abs(x) > LEN / 2 + 30) { running = false; train.visible = false; wait = 25 + Math.random() * 50; }
   }
   return { group, update, get running() { return running; }, place(px) { running = true; dir = 1; x = px; train.position.x = px; train.visible = true; } };
+}
+
+// ---------- 入道雲（ビルボード） ----------
+function cumulusTexture(seed) {
+  const R = makeNoise(seed).rnd;
+  const W = 512, H = 320;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+  // もくもくの房：下は平らに、上へ積み上がる
+  const puffs = [];
+  const base = H * 0.8;
+  for (let i = 0; i < 9; i++) puffs.push([W * (0.12 + 0.76 * i / 8) + (R() - 0.5) * 20, base - 20 - R() * 25, 40 + R() * 30]);
+  for (let i = 0; i < 7; i++) puffs.push([W * (0.22 + 0.56 * R()), base - 70 - R() * 60, 45 + R() * 35]);
+  for (let i = 0; i < 4; i++) puffs.push([W * (0.32 + 0.36 * R()), base - 140 - R() * 50, 40 + R() * 30]);
+  // 影の層（右下にずらして青灰色）
+  for (const [x, y, r] of puffs) {
+    const gr = g.createRadialGradient(x + r * 0.15, y + r * 0.2, r * 0.2, x + r * 0.15, y + r * 0.2, r);
+    gr.addColorStop(0, 'rgba(178,192,214,1)'); gr.addColorStop(0.85, 'rgba(178,192,214,1)'); gr.addColorStop(1, 'rgba(178,192,214,0)');
+    g.fillStyle = gr; g.beginPath(); g.arc(x + r * 0.15, y + r * 0.2, r, 0, Math.PI * 2); g.fill();
+  }
+  // 日なたの層（左上が白く光る）
+  for (const [x, y, r] of puffs) {
+    const gr = g.createRadialGradient(x - r * 0.25, y - r * 0.3, r * 0.1, x - r * 0.1, y - r * 0.1, r * 0.92);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.7, 'rgba(250,252,255,0.95)'); gr.addColorStop(1, 'rgba(240,245,252,0)');
+    g.fillStyle = gr; g.beginPath(); g.arc(x - r * 0.1, y - r * 0.1, r * 0.92, 0, Math.PI * 2); g.fill();
+  }
+  // 平らな雲底
+  g.globalCompositeOperation = 'destination-out';
+  const fade = g.createLinearGradient(0, base - 6, 0, base + 18);
+  fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(1, 'rgba(0,0,0,1)');
+  g.fillStyle = fade; g.fillRect(0, base - 6, W, H);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function buildCumulus() {
+  const group = new THREE.Group();
+  const texs = [11, 23, 37, 51, 67].map(cumulusTexture);
+  const R = makeNoise(909).rnd;
+  const items = [];
+  const COUNT = 26;
+  for (let i = 0; i < COUNT; i++) {
+    const mat = new THREE.SpriteMaterial({ map: texs[i % texs.length], fog: false, depthWrite: false, transparent: true });
+    const sp = new THREE.Sprite(mat);
+    // 北側（名峰の向こう）に多め、ほかの方角にも散らす
+    const north = i < 14;
+    const az = north ? (R() - 0.5) * 1.6 : R() * Math.PI * 2;
+    const dist = 13000 + R() * 12000;
+    const w = 4500 + R() * 6000;
+    sp.scale.set(w, w * 0.625, 1);
+    sp.renderOrder = -1;
+    group.add(sp);
+    items.push({ sp, az, dist, alt: 600 + R() * 900 + w * 0.2, rank: R(), w });
+  }
+  const col = new THREE.Color();
+  function update(time, wx, sunCol, amb, day, camera) {
+    // 晴れの日は少なめ、くもりの日は多く灰色がかる、雨や雪の日は出さない
+    const amount = wx.kind === 'rain' || wx.kind === 'snow' ? 0 : wx.cover < 0.3 ? 0.55 : 0.95;
+    col.setRGB(1, 1, 1).multiply(new THREE.Color().copy(sunCol).multiplyScalar(0.55).add(amb).addScalar(0.15));
+    col.lerp(new THREE.Color(0.62, 0.65, 0.7), wx.cover * 0.6);
+    col.multiplyScalar(0.05 + 0.95 * day);
+    for (const it of items) {
+      const a = it.az + time * 0.0006;
+      it.sp.position.set(camera.position.x + Math.sin(a) * it.dist, it.alt, camera.position.z - Math.cos(a) * it.dist);
+      it.sp.material.color.copy(col);
+      it.sp.material.opacity = THREE.MathUtils.clamp((amount - it.rank) * 6, 0, 1) * (0.4 + 0.6 * day);
+      it.sp.visible = it.sp.material.opacity > 0.01;
+    }
+  }
+  return { group, update };
+}
+
+// ---------- 集落（北の丘のふもと） ----------
+function buildHamlet() {
+  const group = new THREE.Group();
+  const R = makeNoise(5150).rnd;
+  const wallCols = ['#f1efe8', '#e6e1d4', '#d9d6cf', '#efe9dc'], roofCols = ['#4a5260', '#6b3a2e', '#3f5a6e', '#585858'];
+  const body = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
+  for (let i = 0; i < 22; i++) {
+    const x = -700 + R() * 1500, z = -330 - R() * 120;
+    const y = terrainHeight(x, z);
+    if (y > 25) continue;
+    const w = 9 + R() * 6, d = 7 + R() * 3, h = 4 + R() * 3;
+    const house = new THREE.Group();
+    const b = new THREE.Mesh(body, toon({ color: wallCols[i % 4] }));
+    b.scale.set(w, h, d);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.hypot(w, d) * 0.56, 3 + R() * 1.5, 4, 1).rotateY(Math.PI / 4), toon({ color: roofCols[(i * 7) % 4] }));
+    roof.scale.set(w / Math.hypot(w, d) * 1.42, 1, d / Math.hypot(w, d) * 1.42);
+    roof.position.y = h + 1.4;
+    house.add(b, roof);
+    house.position.set(x, y - 0.2, z);
+    house.rotation.y = (R() - 0.5) * 0.4;
+    group.add(house);
+  }
+  return group;
 }

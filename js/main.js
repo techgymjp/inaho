@@ -11,8 +11,8 @@ import {
 // ---------- 画質 ----------
 const isMobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad/.test(navigator.userAgent);
 const QUALITY = {
-  high: { name: '高', shadow: 2048, reflect: 1024, blades: 10, bladeSegs: 3, ears: 4, earSegs: 5, trees: 14000, terrainSeg: 320, grass: 7000, pr: Math.min(devicePixelRatio, 2) },
-  low: { name: '軽量', shadow: 1024, reflect: 384, blades: 5, bladeSegs: 2, ears: 3, earSegs: 3, trees: 6000, terrainSeg: 200, grass: 2500, pr: Math.min(devicePixelRatio, 1.25) },
+  high: { name: '高', shadow: 2048, reflect: 1024, blades: 10, bladeSegs: 3, ears: 4, earSegs: 5, trees: 26000, terrainSeg: 320, grass: 7000, pr: Math.min(devicePixelRatio, 2) },
+  low: { name: '軽量', shadow: 1024, reflect: 384, blades: 5, bladeSegs: 2, ears: 3, earSegs: 3, trees: 11000, terrainSeg: 200, grass: 2500, pr: Math.min(devicePixelRatio, 1.25) },
 };
 const qKey = localStorage.getItem('suiden365.quality') || (isMobile ? 'low' : 'high');
 const Q = QUALITY[qKey] || QUALITY.high;
@@ -63,11 +63,10 @@ const cam = {
   tPos: new THREE.Vector3(), tYaw: 0, tPitch: 0, dragYaw: 0, dragPitch: 0, fov: 55, tFov: 55,
 };
 const VIEWS = {
-  aze: { label: '畦道', pos: [7.5, 1.55, 27.6], yaw: 0.02, pitch: -0.05 },
+  aze: { label: '畦道', pos: [7.5, 1.6, 27.9], yaw: 0.06, pitch: 0.03, fov: 24 }, // 望遠
   drone: { label: '空から', orbit: true },
   yama: { label: '里山', pos: [-190, 62, 175], look: [0, 0, 0] },
   north: { label: '水路', pos: [-14, 1.4, -28.2], yaw: Math.PI * 0.82, pitch: -0.04 },
-  harvest: { label: '稲刈り', harvest: true },
 };
 const VIEW_ORDER = ['aze', 'drone', 'yama', 'north'];
 function lookFrom(p, target) {
@@ -77,7 +76,10 @@ function lookFrom(p, target) {
 let droneAngle = 0.6;
 function viewTarget(dt) {
   const v = VIEWS[state.view];
-  cam.tFov = 55;
+  // 視野角（縦）。縦長の画面では横の視野が狭くなりすぎないよう広げる
+  const wantV = v.fov || 55, minH = v.fov ? 20 : 50;
+  const needV = 2 * THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtils.degToRad(minH / 2)) / camera.aspect));
+  cam.tFov = Math.min(Math.max(wantV, needV), 75);
   if (v.orbit) {
     droneAngle += dt * 0.03;
     const a = droneAngle + cam.dragYaw;
@@ -85,16 +87,6 @@ function viewTarget(dt) {
     cam.tPos.set(Math.sin(a) * R, H, Math.cos(a) * R);
     const l = lookFrom([cam.tPos.x, H, cam.tPos.z], [0, 0, 0]);
     cam.tYaw = l.yaw; cam.tPitch = l.pitch + cam.dragPitch;
-  } else if (v.harvest) {
-    const pitch = -0.95;
-    cam.tFov = 50;
-    const vf = THREE.MathUtils.degToRad(cam.tFov) / 2;
-    const hf = Math.atan(Math.tan(vf) * camera.aspect);
-    const dW = (FIELD_W * 0.5 + 1) / Math.tan(hf) + 4;
-    const dD = (FIELD_D * 0.55) / Math.tan(vf) * Math.sin(-pitch) + 6;
-    const D = Math.max(dW, dD, 30);
-    cam.tPos.set(0, Math.sin(-pitch) * D, Math.cos(pitch) * D + 2);
-    cam.tYaw = 0; cam.tPitch = pitch;
   } else {
     cam.tPos.fromArray(v.pos);
     if (v.look) { const l = lookFrom(v.pos, v.look); cam.tYaw = l.yaw + cam.dragYaw; cam.tPitch = l.pitch + cam.dragPitch; }
@@ -107,9 +99,8 @@ function setView(name, instant = false) {
   state.view = name;
   cam.dragYaw = 0; cam.dragPitch = 0;
   document.getElementById('btnView').textContent = '視点：' + VIEWS[name].label;
-  document.body.classList.toggle('harvest-view', name === 'harvest');
   viewTarget(0);
-  if (instant) { cam.pos.copy(cam.tPos); cam.yaw = cam.tYaw; cam.pitch = cam.tPitch; }
+  if (instant) { cam.pos.copy(cam.tPos); cam.yaw = cam.tYaw; cam.pitch = cam.tPitch; cam.fov = cam.tFov; camera.fov = cam.fov; camera.updateProjectionMatrix(); }
 }
 function updateCamera(dt) {
   viewTarget(dt);
@@ -187,7 +178,7 @@ function updateHUD(tg) {
   }
   // 稲刈りパネル
   const inHarvest = field.isHarvestable(state.t) && !state.finalized;
-  ui.harvest.classList.toggle('show', inHarvest || state.view === 'harvest');
+  ui.harvest.classList.toggle('show', inHarvest);
   const n = field.countCutCached;
   const pct = n / TOTAL * 100;
   ui.hPct.textContent = pct.toFixed(0) + '%';
@@ -213,7 +204,9 @@ function groundPoint(e) {
 let lastSwish = 0;
 function doCut(a, b) {
   if (!field.isHarvestable(state.t) || state.finalized) return;
-  const ids = field.cutAlong(a.x, a.z, b.x, b.z, 0.75);
+  // 遠くの稲ほど指の太さが広い範囲に当たる
+  const r = clamp(camera.position.distanceTo(b) * 0.045, 0.9, 3);
+  const ids = field.cutAlong(a.x, a.z, b.x, b.z, r);
   if (!ids.length) return;
   const q = harvestQuality(state.t);
   state.harvestKg += ids.length * KG_PER_HILL * q;
@@ -226,12 +219,16 @@ function doCut(a, b) {
 }
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
-  pointer = { id: e.pointerId, x: e.clientX, y: e.clientY, g: groundPoint(e) };
-  if (state.view === 'harvest') trail.push({ x: e.clientX, y: e.clientY, t: performance.now() });
+  const g = groundPoint(e);
+  // 稲刈りの期間に田んぼの上から始めたスワイプは「刈り取り」、それ以外は見回し
+  const onField = g && Math.abs(g.x) < FIELD_W / 2 && Math.abs(g.z) < FIELD_D / 2;
+  const cutting = !!(onField && field.isHarvestable(state.t) && !state.finalized);
+  pointer = { id: e.pointerId, x: e.clientX, y: e.clientY, g, cutting };
+  if (cutting) trail.push({ x: e.clientX, y: e.clientY, t: performance.now() });
 });
 canvas.addEventListener('pointermove', (e) => {
   if (!pointer || pointer.id !== e.pointerId) return;
-  if (state.view === 'harvest') {
+  if (pointer.cutting) {
     const g = groundPoint(e);
     if (g && pointer.g) {
       // 細かく分割して取りこぼしを防ぐ
@@ -243,8 +240,9 @@ canvas.addEventListener('pointermove', (e) => {
     trail.push({ x: e.clientX, y: e.clientY, t: performance.now() });
   } else {
     const dx = e.clientX - pointer.x, dy = e.clientY - pointer.y;
-    cam.dragYaw -= dx * 0.004; cam.dragPitch = clamp(cam.dragPitch + dy * 0.003, -0.7, 0.7);
-    cam.yaw -= dx * 0.004; cam.pitch += dy * 0.003; // すぐ反応させる
+    const k = cam.fov / 55; // 望遠ほどゆっくり回す
+    cam.dragYaw -= dx * 0.004 * k; cam.dragPitch = clamp(cam.dragPitch + dy * 0.003 * k, -0.7, 0.7);
+    cam.yaw -= dx * 0.004 * k; cam.pitch += dy * 0.003 * k; // すぐ反応させる
   }
   pointer.x = e.clientX; pointer.y = e.clientY;
 });
@@ -282,7 +280,6 @@ function finalizeHarvest(late) {
   state.records = state.records.filter(r => r.year !== state.year).concat(rec);
   audio.chime();
   showResult(rec, lost);
-  if (state.view === 'harvest') setView('aze');
   save();
 }
 function showResult(rec, lost) {
@@ -328,8 +325,7 @@ function frame(now) {
       if (state.speed > 1) setSpeed(1);
       if (!state.harvestPrompted) {
         state.harvestPrompted = true;
-        setView('harvest');
-        toast('<b>稲刈りの季節です！</b><br>田んぼを指でなぞって（スワイプして）刈り取りましょう。<br>9月28日〜10月8日に刈ると一等米に。', 9);
+        toast('<b>稲刈りの季節です！</b><br>田んぼの稲を指でなぞって（スワイプして）刈り取りましょう。<br>9月28日〜10月8日に刈ると一等米に。', 9);
       }
     }
     if (state.t >= HARVEST_END && state.t < 365 && !state.finalized) finalizeHarvest(true);
@@ -381,7 +377,7 @@ function startGame(opt) {
     Object.assign(state, { year: saved.year, t: saved.t, harvestKg: saved.harvestKg, harvestQ: saved.harvestQ || 0, finalized: saved.finalized, records: saved.records || [], harvestPrompted: !!saved.harvestPrompted, calYear: saved.calYear || now.getFullYear() });
     field.deserialize(saved.cut);
     setSpeed(saved.speed || 1);
-    setView(saved.view === 'harvest' && !field.isHarvestable(saved.t) ? 'aze' : (saved.view || 'aze'), true);
+    setView(VIEWS[saved.view] ? saved.view : 'aze', true);
   } else {
     const starts = {
       today: doyOf(now.getMonth() + 1, Math.min(now.getDate(), 28 + (now.getMonth() === 1 ? 0 : 3))) + 6 / 24,
@@ -396,7 +392,7 @@ function startGame(opt) {
     state.harvestPrompted = state.t >= HARVEST_START;
     if (state.finalized) field.cut.fill(1);
     setSpeed(1);
-    setView(field.isHarvestable(state.t) ? 'harvest' : 'aze', true);
+    setView('aze', true);
   }
   field.countCutCached = field.countCut();
   updateWeather(0, true);
@@ -422,11 +418,10 @@ $('btnSpeed').onclick = () => {
   setSpeed(SPEEDS[(SPEEDS.indexOf(state.speed) + 1) % SPEEDS.length]);
 };
 $('btnView').onclick = () => {
-  const order = field.isHarvestable(state.t) && !state.finalized ? ['harvest', ...VIEW_ORDER] : VIEW_ORDER;
+  const order = VIEW_ORDER;
   const i = order.indexOf(state.view);
   setView(order[(i + 1) % order.length]);
 };
-$('btnHarvestView').onclick = () => setView('harvest');
 $('btnSound').onclick = () => { const on = audio.toggle(); ui.sound.textContent = on ? '音：オン' : '音：オフ'; };
 $('btnMenu').onclick = () => { renderRecords(); $('menu').classList.add('show'); };
 $('btnCloseMenu').onclick = () => $('menu').classList.remove('show');

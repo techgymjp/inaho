@@ -313,6 +313,45 @@ export function createField(scene, quality) {
   rice.receiveShadow = true; ears.receiveShadow = true;
   group.add(rice, ears);
 
+  // ---------- 稲の群落面（株のすき間を埋めて、密な田んぼに見せる） ----------
+  const canopyMask = new Uint8Array(NX * NZ * COLS * ROWS).fill(255);
+  const maskTex = new THREE.DataTexture(canopyMask, NX * COLS, NZ * ROWS, THREE.RedFormat);
+  maskTex.minFilter = maskTex.magFilter = THREE.LinearFilter;
+  maskTex.needsUpdate = true;
+  const canopyMat = toon({ color: 0x4d8a2a });
+  canopyMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uMask = { value: maskTex };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vCw;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvCw = (modelMatrix*vec4(transformed,1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D uMask; varying vec3 vCw;\n' + GLSL_NOISE)
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+        vec2 muv = vec2((vCw.x - ${X0.toFixed(3)}) / ${FIELD_W.toFixed(3)}, (vCw.z - ${Z0.toFixed(3)}) / ${FIELD_D.toFixed(3)});
+        if (texture2D(uMask, muv).r < 0.5) discard;`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        float fine = vnoise(vCw.xz*vec2(9.0, 14.0))*0.6 + vnoise(vCw.xz*2.5)*0.4;
+        float rows = 0.9 + 0.1*sin(vCw.z*${(2 * Math.PI / ROW_Z).toFixed(4)});
+        diffuseColor.rgb *= (0.78 + 0.32*fine) * rows;`);
+  };
+  const canopy = new THREE.Group();
+  for (let p = 0; p < COLS * ROWS; p++) {
+    const r = paddyRect(p);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(r.w - 0.2, r.d - 0.25).rotateX(-Math.PI / 2), canopyMat);
+    m.position.set(r.x + r.w / 2, 0, r.z + r.d / 2);
+    m.receiveShadow = true;
+    canopy.add(m);
+  }
+  group.add(canopy);
+  // マスクの画素：区画をタイル状に並べた (x: 列×NX + j, y: 段×NZ + i)
+  const maskIndex = (idx) => {
+    const p = Math.floor(idx / PER_PADDY), k = idx % PER_PADDY, i = Math.floor(k / NX), j = k % NX;
+    const c = p % COLS, rr = Math.floor(p / COLS);
+    // 区画の間の畦の分だけずれるが、田面だけを描くので近似で十分
+    const u = Math.floor(((paddyRect(p).x - X0) + 0.2 + j * HILL_X) / FIELD_W * NX * COLS);
+    const v = Math.floor(((paddyRect(p).z - Z0) + 0.25 + i * ROW_Z) / FIELD_D * NZ * ROWS);
+    void c; void rr;
+    return Math.min(NZ * ROWS - 1, v) * NX * COLS + Math.min(NX * COLS - 1, u);
+  };
+
   const hx = new Float32Array(TOTAL), hz = new Float32Array(TOTAL), hrot = new Float32Array(TOTAL), hs = new Float32Array(TOTAL), plantOrder = new Float32Array(TOTAL);
   let k = 0;
   for (let p = 0; p < COLS * ROWS; p++) {
@@ -411,8 +450,8 @@ export function createField(scene, quality) {
 
   // ---------- 季節・日ごとの更新 ----------
   const C = (r, g, b) => new THREE.Color(r, g, b);
-  const riceCol = { young: hex('#8fd14a'), deep: hex('#3f9a2e'), ripe: hex('#e0b23c'), late: hex('#b98f3c'), straw: hex('#cdb378') };
-  const earCol = { green: hex('#6aa83a'), flower: hex('#b7c98a'), gold: hex('#f2c94c') };
+  const riceCol = { young: hex('#8fd14a'), deep: hex('#3f9a2e'), ripe: hex('#d9c23a'), late: hex('#b98f3c'), straw: hex('#cdb378') };
+  const earCol = { green: hex('#6aa83a'), flower: hex('#9fc070'), gold: hex('#f2cf3c') };
   const mudCol = { wet: hex('#6e5a44'), dry: hex('#b39a78'), tilled: hex('#8a6a4a'), snow: hex('#ffffff').multiplyScalar(1.4), stubble: hex('#c7b088') };
   const leveeCol = { summer: hex('#5fae3a'), spring: hex('#8cca4c'), dry: hex('#bba468'), snow: hex('#f2f6fb') };
   const tmp = new THREE.Color();
@@ -455,6 +494,12 @@ export function createField(scene, quality) {
     ears.instanceMatrix.needsUpdate = true;
     ears.visible = visibleEars > 0;
     rice.visible = !!g && !plowed;
+    // 群落面：株が茂って田面が見えなくなる6月下旬から
+    const close = g && !plowed ? smooth(doyOf(6, 10), doyOf(7, 5), t) : 0;
+    canopy.visible = close > 0.02;
+    canopy.position.y = g ? g.h * (0.15 + 0.62 * close) : 0;
+    for (let i = 0; i < TOTAL; i++) canopyMask[maskIndex(i)] = cut[i] ? 0 : 255;
+    maskTex.needsUpdate = true;
   }
 
   function update(t, force = false) {
@@ -482,6 +527,7 @@ export function createField(scene, quality) {
         .lerp(riceCol.ripe, g.ripe).lerp(riceCol.late, g.late);
       if (t >= HARVEST_END) tmp.lerp(riceCol.straw, smooth(HARVEST_END, HARVEST_END + 10, t));
       riceMat.color.copy(tmp);
+      canopyMat.color.copy(tmp).multiplyScalar(0.82);
       tmp.copy(earCol.green).lerp(earCol.flower, smooth(doyOf(7, 30), doyOf(8, 6), t) * (1 - g.ripe)).lerp(earCol.gold, g.ripe);
       earMat.color.copy(tmp);
       const droop = Math.round(g.droop * 10) / 10;
@@ -531,6 +577,8 @@ export function createField(scene, quality) {
         o.scale.setScalar(1e-4); o.updateMatrix(); ears.setMatrixAt(idx, o.matrix);
       }
       rice.instanceMatrix.needsUpdate = true; ears.instanceMatrix.needsUpdate = true;
+      for (const idx of out) canopyMask[maskIndex(idx)] = 0;
+      maskTex.needsUpdate = true;
     }
     return out;
   }
