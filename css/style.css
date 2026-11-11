@@ -1,0 +1,106 @@
+:root {
+  --ink: #f6f1e4;
+  --ink-dim: rgba(246, 241, 228, .72);
+  --glass: rgba(20, 24, 18, .42);
+  --glass-strong: rgba(18, 22, 16, .78);
+  --line: rgba(255, 255, 255, .16);
+  --gold: #e6c25a;
+  --danger: #e07a5f;
+  --font: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", Meiryo, system-ui, sans-serif;
+  --serif: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0d110c; color: var(--ink); font-family: var(--font); }
+body { overscroll-behavior: none; user-select: none; -webkit-user-select: none; }
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+body.harvest-view #scene { cursor: crosshair; }
+#trail { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+button { font: inherit; color: inherit; }
+
+#yearTrack { position: fixed; top: 0; left: 0; right: 0; height: 3px; background: rgba(255,255,255,.12); z-index: 3; }
+#yearBar { height: 100%; width: 0; background: linear-gradient(90deg, #9bc1e0, #7fb069 35%, #e6c25a 72%, #f2f2f2); }
+#yearTrack i { position: absolute; top: 0; width: 2px; height: 7px; background: rgba(255,255,255,.7); }
+
+#hud { position: fixed; top: calc(14px + env(safe-area-inset-top)); left: calc(16px + env(safe-area-inset-left)); z-index: 2;
+  text-shadow: 0 1px 6px rgba(0,0,0,.55); pointer-events: none; }
+#hudYear { font-size: 12px; letter-spacing: .08em; color: var(--ink-dim); }
+#hudDate { font-family: var(--serif); font-size: 26px; font-weight: 600; letter-spacing: .04em; margin: 2px 0; }
+#hud .row { display: flex; gap: 12px; align-items: baseline; font-size: 14px; color: var(--ink-dim); }
+#hudTime { font-variant-numeric: tabular-nums; font-size: 18px; color: var(--ink); }
+
+#stageCard { position: fixed; left: calc(16px + env(safe-area-inset-left)); bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 2;
+  max-width: min(360px, calc(100vw - 32px)); padding: 12px 14px; border-radius: 12px; background: var(--glass);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--line); pointer-events: none; }
+#stageName { font-family: var(--serif); font-size: 18px; font-weight: 600; }
+#stageNote { font-size: 13px; line-height: 1.6; color: var(--ink-dim); margin-top: 2px; }
+
+#controls { position: fixed; right: calc(16px + env(safe-area-inset-right)); top: calc(14px + env(safe-area-inset-top)); z-index: 3;
+  display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 60vw; }
+#controls button { min-width: 44px; height: 38px; padding: 0 12px; border-radius: 19px; border: 1px solid var(--line);
+  background: var(--glass); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); font-size: 13px; cursor: pointer; }
+#controls button:active { transform: scale(.96); }
+
+#harvestPanel { position: fixed; left: 50%; transform: translate(-50%, -12px); top: calc(64px + env(safe-area-inset-top)); z-index: 2;
+  width: min(420px, calc(100vw - 32px)); padding: 10px 14px 12px; border-radius: 14px; background: var(--glass-strong);
+  border: 1px solid rgba(230, 194, 90, .45); opacity: 0; pointer-events: none; transition: opacity .4s, transform .4s; }
+#harvestPanel.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.hTop, .hBottom { display: flex; justify-content: space-between; align-items: center; font-size: 13px; gap: 8px; }
+.hTop b { color: var(--gold); font-size: 16px; }
+.hBar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.12); margin: 8px 0; overflow: hidden; }
+#hFill { height: 100%; width: 0; background: linear-gradient(90deg, #c9a03c, #f0d77a); transition: width .2s; }
+#hGrade { color: var(--ink-dim); }
+#btnHarvestView { border: 0; border-radius: 14px; padding: 5px 12px; background: var(--gold); color: #2a2208; font-weight: 700; cursor: pointer; }
+body.harvest-view #btnHarvestView { display: none; }
+#swipeHint { position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 2;
+  padding: 8px 16px; border-radius: 20px; background: rgba(0,0,0,.45); font-size: 14px; white-space: nowrap; opacity: 0; transition: opacity .5s; pointer-events: none; }
+body.harvest-view.harvest-season #swipeHint { opacity: 1; animation: hint 2.4s ease-in-out infinite; }
+@keyframes hint { 0%, 100% { opacity: .95; } 50% { opacity: .5; } }
+
+#toast { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(.98); z-index: 4; max-width: min(460px, calc(100vw - 32px));
+  padding: 16px 22px; border-radius: 14px; background: var(--glass-strong); border: 1px solid var(--line); text-align: center;
+  font-size: 14px; line-height: 1.7; opacity: 0; transition: opacity .6s, transform .6s; pointer-events: none; }
+#toast b { font-family: var(--serif); font-size: 20px; letter-spacing: .06em; }
+#toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+
+.overlay { position: fixed; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center; padding: 16px; }
+.overlay.show { display: flex; }
+#start { background: linear-gradient(180deg, rgba(6,10,8,.15), rgba(6,10,8,.55) 60%, rgba(6,10,8,.8)); align-items: flex-end; }
+.startInner { width: min(520px, 100%); padding-bottom: calc(24px + env(safe-area-inset-bottom)); text-align: center; text-shadow: 0 2px 14px rgba(0,0,0,.6); }
+.pre { letter-spacing: .3em; font-size: 12px; color: var(--ink-dim); margin: 0; }
+h1 { font-family: var(--serif); font-weight: 600; font-size: clamp(44px, 12vw, 76px); letter-spacing: .12em; margin: 6px 0 10px; }
+h1 span { color: var(--gold); font-size: .82em; letter-spacing: .02em; margin: 0 .08em; }
+.lead { font-family: var(--serif); font-size: 16px; line-height: 1.9; margin: 0 0 8px; }
+.lead.small { font-size: 14px; color: var(--ink-dim); }
+.buttons { display: flex; flex-direction: column; gap: 8px; margin: 18px auto 10px; width: min(340px, 100%); }
+.buttons button { display: flex; justify-content: space-between; align-items: center; padding: 13px 18px; border-radius: 12px;
+  border: 1px solid var(--line); background: rgba(20,24,18,.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); font-size: 15px; cursor: pointer; }
+.buttons button small { color: var(--ink-dim); font-size: 12px; }
+.buttons button.primary { background: var(--gold); color: #261f08; border-color: transparent; font-weight: 700; }
+.buttons button.primary small { color: rgba(38,31,8,.7); }
+.buttons button.danger { color: var(--danger); }
+.buttons button[hidden] { display: none; }
+.tiny { font-size: 11px; color: var(--ink-dim); }
+
+.panel { width: min(440px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 18px 20px; border-radius: 16px;
+  background: rgba(16,20,14,.92); border: 1px solid var(--line); }
+#menu, #result { background: rgba(0,0,0,.35); }
+.panel h2 { font-family: var(--serif); font-size: 18px; margin: 4px 0 10px; }
+.panel ul { padding-left: 18px; font-size: 13px; line-height: 1.8; color: var(--ink-dim); }
+.panel table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 14px; }
+.panel td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
+#resultBody .big { font-family: var(--serif); font-size: 44px; text-align: center; color: var(--gold); margin: 6px 0 12px; }
+#resultBody .big small { font-size: 18px; color: var(--ink); }
+#resultBody .row { display: flex; justify-content: space-between; padding: 8px 2px; border-bottom: 1px solid var(--line); font-size: 14px; }
+#resultBody .warn { color: var(--danger); font-size: 13px; }
+#resultBody .note { color: var(--ink-dim); font-size: 13px; }
+
+@media (max-width: 560px) {
+  #hudDate { font-size: 21px; }
+  #controls { max-width: 52vw; }
+  #controls button { height: 34px; padding: 0 10px; font-size: 12px; }
+  #harvestPanel { top: calc(120px + env(safe-area-inset-top)); }
+}
+body.title #hud, body.title #stageCard, body.title #controls, body.title #yearTrack, body.title #harvestPanel, body.title #toast { display: none; }
+#harvestPanel.show { pointer-events: none; }
+#harvestPanel.show #btnHarvestView { pointer-events: auto; }
+body.harvest-view #stageCard { display: none; }

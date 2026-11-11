@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>水田365日</title>
+  <meta name="description" content="福島の山あいの田んぼの一年を、1日1分で。収穫の時だけスワイプで稲を刈り取る3D風景シミュレーション。">
+  <meta name="theme-color" content="#1b2418">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231f2a1a'/%3E%3Cpath d='M32 56V22' stroke='%23d9b44a' stroke-width='3'/%3E%3Cpath d='M32 24c6-8 14-10 18-8-2 6-10 10-18 8zM32 32c-6-8-14-10-18-8 2 6 10 10 18 8zM32 40c6-8 14-10 18-8-2 6-10 10-18 8z' fill='%23e8c55a'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    { "imports": { "three": "./lib/three.module.js", "three/addons/": "./lib/addons/" } }
+  </script>
+</head>
+<body class="title">
+  <canvas id="scene"></canvas>
+  <canvas id="trail"></canvas>
+
+  <div id="yearTrack"><div id="yearBar"></div>
+    <i style="left:36.7%" title="田植え"></i><i style="left:72.3%" title="稲刈り"></i>
+  </div>
+
+  <header id="hud">
+    <div id="hudYear">1年目</div>
+    <div id="hudDate">—</div>
+    <div class="row"><span id="hudTime">--:--</span><span id="hudSub"></span></div>
+  </header>
+
+  <section id="stageCard">
+    <div id="stageName"></div>
+    <div id="stageNote"></div>
+  </section>
+
+  <section id="harvestPanel">
+    <div class="hTop"><span>刈り取り <b id="hPct">0%</b></span><span id="hKg">0 kg</span></div>
+    <div class="hBar"><div id="hFill"></div></div>
+    <div class="hBottom"><span id="hGrade"></span><button id="btnHarvestView">刈り取る</button></div>
+  </section>
+
+  <div id="swipeHint">指でなぞって稲を刈り取る</div>
+  <div id="toast"></div>
+
+  <nav id="controls">
+    <button id="btnPause" title="一時停止（Space）">❚❚</button>
+    <button id="btnSpeed" title="1日＝1分">×1</button>
+    <button id="btnView" title="視点を切り替え（V）">視点</button>
+    <button id="btnSound">音：オフ</button>
+    <button id="btnMenu" title="メニュー">≡</button>
+  </nav>
+
+  <div id="start" class="overlay show">
+    <div class="startInner">
+      <p class="pre">福島・山あいの田んぼより</p>
+      <h1>水田<span>365</span>日</h1>
+      <p class="lead">山に囲まれた田んぼの一年を、<br>一日一分で見守る。</p>
+      <p class="lead small">雪どけ、水張り、田植え、黄金の穂。<br>稲刈りのときだけ、あなたの手で。</p>
+      <div class="buttons">
+        <button data-start="continue" id="btnContinue" hidden class="primary">つづきから</button>
+        <button data-start="spring" class="primary">田起こしから始める<small>4月20日</small></button>
+        <button data-start="today">今日の日付から<small id="todayLabel"></small></button>
+        <button data-start="harvest">稲刈りの直前から<small>9月19日</small></button>
+        <button data-start="jan">元日から<small>1月1日</small></button>
+      </div>
+      <p class="tiny">1日＝1分（1年で約6時間）。早送りもできます。音が出ます。</p>
+    </div>
+  </div>
+
+  <div id="menu" class="overlay">
+    <div class="panel">
+      <h2>収穫の記録</h2>
+      <table><tbody id="records"></tbody></table>
+      <h2>あそびかた</h2>
+      <ul>
+        <li>田んぼの一年が、1日＝1分で進みます（×10〜×600で早送り）。</li>
+        <li>ドラッグで見回し、「視点」で場所を切り替えます。</li>
+        <li>9月22日〜10月20日は稲刈り。田んぼをスワイプして刈り取ります。</li>
+        <li>9月28日〜10月8日に刈ると一等米。遅れると稲が倒れてしまいます。</li>
+        <li>農作業の時期は会津地方の一般的な目安をもとにしています。</li>
+        <li>遠くの線路をローカル線が走ります。</li>
+      </ul>
+      <div class="buttons">
+        <button id="btnQuality"></button>
+        <button id="btnReset" class="danger">最初からやり直す</button>
+        <button id="btnCloseMenu" class="primary">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="result" class="overlay">
+    <div class="panel">
+      <h2>今年の収穫</h2>
+      <div id="resultBody"></div>
+      <div class="buttons"><button id="btnCloseResult" class="primary">田んぼへ戻る</button></div>
+    </div>
+  </div>
+
+  <noscript>このゲームを遊ぶには JavaScript と WebGL が必要です。</noscript>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
