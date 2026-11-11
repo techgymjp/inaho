@@ -34,8 +34,9 @@ python3 -m http.server 8000
 
 ## 公開（GitHub Pages）
 
-`main` に push すると `.github/workflows/pages.yml` が GitHub Pages にデプロイします。
-初回だけ、リポジトリの **Settings → Pages → Build and deployment → Source** を **GitHub Actions** にしてください。
+**Settings → Pages** で `main` ブランチ（/ root）から公開しています。`main` に push すると自動で更新されます。
+
+公開URL：https://techgymjp.github.io/inaho/
 
 ## 構成
 
