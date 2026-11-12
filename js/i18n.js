@@ -121,11 +121,42 @@ export const msg = {
   gradeNow: (g) => LANG === 'ja' ? `いま刈ると：${g}` : `Cut now: ${gradeText(g)}`,
   view: (label) => LANG === 'ja' ? `視点：${label}` : `View: ${label}`,
   quality: (name) => LANG === 'ja' ? `画質：${name}（切替）` : `Quality: ${name} (switch)`,
+  // リワード広告の案内（種類ごと）
+  reward: (kind, v) => {
+    const J2 = LANG === 'ja';
+    const T = {
+      harvest: J2 ? ['稲刈りの期限です', 'まだ稲が残っています', `刈り残した稲が ${v}% あります。このままだと倒れてしまいます。広告を見ると、稲刈りの期限を3日延ばせます（1年に1回）。`, '広告を見て3日延ばす']
+        : ['Harvest deadline', 'There is still rice standing', `${v}% of the rice is still uncut and will fall over. Watch an ad to extend the harvest by 3 days (once a year).`, 'Watch an ad for 3 more days'],
+      house: J2 ? ['ハウスがつぶれました', '広告を見てハウスを直しますか？', '雪の重みでハウスがつぶれてしまいました。このままだと苗を買うことになり、収量が10%減ります。広告を見ると、ハウスを直せます（1年に1回）。', '広告を見てハウスを直す']
+        : ['The greenhouse collapsed', 'Repair it with an ad?', 'The greenhouse collapsed under the snow. Seedlings would have to be bought (−10% yield). Watch an ad to repair the greenhouse (once a year).', 'Watch an ad to repair it'],
+      plant: J2 ? ['田植えの期限です', 'まだ植えていない所があります', `まだ ${v}% の苗を植えていません。このままだと遅れて植えられ、その分の収量が15%減ります。広告を見ると、田植えの期間を2日延ばせます（1年に1回）。`, '広告を見て2日延ばす']
+        : ['Planting deadline', 'Some rows are still unplanted', `${v}% of the seedlings are not planted yet. They would be planted late (−15% yield for them). Watch an ad to extend planting by 2 days (once a year).`, 'Watch an ad for 2 more days'],
+      weed: J2 ? ['除草の期限です', 'まだ雑草が残っています', `雑草がまだ ${v}本 残っています。このままだと稲の栄養を奪われます。広告を見ると、除草の期間を3日延ばせます（1年に1回）。`, '広告を見て3日延ばす']
+        : ['Weeding deadline', 'Weeds are still growing', `${v} weeds are still left and will steal nutrients from the rice. Watch an ad to extend weeding by 3 days (once a year).`, 'Watch an ad for 3 more days'],
+      till: J2 ? ['田起こしの期限です', 'まだ耕していない所があります', `まだ ${v}% を耕していません。このままだと収量が少し減ります。広告を見ると、田起こしの期間を2日延ばせます（1年に1回）。`, '広告を見て2日延ばす']
+        : ['Tilling deadline', 'Some ground is still untilled', `${v}% is still untilled, which lowers the yield a little. Watch an ad to extend tilling by 2 days (once a year).`, 'Watch an ad for 2 more days'],
+      level: J2 ? ['代かきの期限です', 'まだデコボコが残っています', `まだ ${v}% が平らになっていません。このままだと苗の育ちがそろいません。広告を見ると、代かきの期間を2日延ばせます（1年に1回）。`, '広告を見て2日延ばす']
+        : ['Puddling deadline', 'The paddies are still bumpy', `${v}% is still not level, so the seedlings will grow unevenly. Watch an ad to extend puddling by 2 days (once a year).`, 'Watch an ad for 2 more days'],
+      bug: J2 ? ['カメムシ防除の期限です', 'カメムシを逃してしまいました', `カメムシを ${v}匹 逃しました。このままだとお米に斑点がついて等級が下がります。広告を見ると、その被害をなかったことにできます（1年に1回）。`, '広告を見て被害を防ぐ']
+        : ['Stink-bug deadline', 'Some stink bugs got away', `${v} stink bugs got away and will spot the grain, lowering the grade. Watch an ad to undo the damage (once a year).`, 'Watch an ad to undo it'],
+      melt: J2 ? ['融雪剤まきの期限です', 'まだまいていない所があります', `まだ ${v}% にまいていません。広告を見ると、融雪剤まきの期間を2日延ばせます（1年に1回）。`, '広告を見て2日延ばす']
+        : ['Snow-melt deadline', 'Some paddies are still untreated', `${v}% is still untreated. Watch an ad to extend spreading by 2 days (once a year).`, 'Watch an ad for 2 more days'],
+      levee: J2 ? ['畦の補修の期限です', 'まだ穴が残っています', `畦の穴がまだ ${v}か所 残っています。このままだと来年、田んぼの水がもれます。広告を見ると、補修の期間を2日延ばせます（1年に1回）。`, '広告を見て2日延ばす']
+        : ['Levee repair deadline', 'Some holes are still open', `${v} holes are still open and will leak next year. Watch an ad to extend repairs by 2 days (once a year).`, 'Watch an ad for 2 more days'],
+      bird: J2 ? ['スズメの被害', '食べられた分を取り返しますか？', `スズメに ${v}kg 食べられてしまいました。広告を見ると、その分を取り返せます（1年に1回）。`, '広告を見て取り返す']
+        : ['Sparrow damage', 'Win back what was eaten?', `Sparrows ate ${v} kg of rice. Watch an ad to get it back (once a year).`, 'Watch an ad to win it back'],
+    }[kind];
+    return { tag: T[0], title: T[1], text: T[2], yes: T[3] };
+  },
+  helped: (n) => LANG === 'ja' ? `広告での手助け ${n}回` : `Helped by ads ${n}×`,
+  rewardDone: (kind) => LANG === 'ja'
+    ? { till: '田起こしの期間を2日延ばしました', level: '代かきの期間を2日延ばしました', bug: 'カメムシの被害を防ぎました', melt: '融雪剤まきの期間を2日延ばしました', levee: '畦の補修の期間を2日延ばしました', harvest: '稲刈りの期限を3日延ばしました', house: 'ハウスを直しました', plant: '田植えの期間を2日延ばしました', weed: '除草の期間を3日延ばしました', bird: 'スズメに食べられた分を取り返しました' }[kind]
+    : { till: 'Tilling extended by 2 days', level: 'Puddling extended by 2 days', bug: 'The stink-bug damage is undone', melt: 'Snow-melt extended by 2 days', levee: 'Levee repairs extended by 2 days', harvest: 'Harvest extended by 3 days', house: 'The greenhouse is repaired', plant: 'Planting extended by 2 days', weed: 'Weeding extended by 3 days', bird: 'You won back the rice the sparrows ate' }[kind],
   rewardText: (pct) => LANG === 'ja' ? `刈り残した稲が ${pct}% あります。このままだと倒れてしまいます。広告を見ると、稲刈りの期限を3日延ばせます（1年に1回）。` : `${pct}% of the rice is still uncut and will fall over. Watch an ad to extend the harvest by 3 days (once a year).`,
   extended: (n) => LANG === 'ja' ? `稲刈りの延長 ${n}回` : `Harvest extended ${n}×`,
   shareText: (rec) => LANG === 'ja'
-    ? `水田365日　${rec.year}年目の収穫は ${rec.kg.toLocaleString()}kg（${(rec.kg / 60).toFixed(1)}俵）、${rec.grade}でした。${rec.ext ? `（稲刈りの延長 ${rec.ext}回）` : ''} #水田365日`
-    : `Suiden 365 — Year ${rec.year} harvest: ${rec.kg.toLocaleString()} kg (${(rec.kg / 60).toFixed(1)} bales), ${gradeText(rec.grade)}.${rec.ext ? ` (harvest extended ${rec.ext}×)` : ''} #Suiden365`,
+    ? `水田365日　${rec.year}年目の収穫は ${rec.kg.toLocaleString()}kg（${(rec.kg / 60).toFixed(1)}俵）、${rec.grade}でした。${rec.ext ? `（広告での手助け ${rec.ext}回）` : ''} #水田365日`
+    : `Suiden 365 — Year ${rec.year} harvest: ${rec.kg.toLocaleString()} kg (${(rec.kg / 60).toFixed(1)} bales), ${gradeText(rec.grade)}.${rec.ext ? ` (helped by ads ${rec.ext}×)` : ''} #Suiden365`,
   best: (r) => LANG === 'ja' ? `これまでの最高：${r.kg.toLocaleString()}kg（${r.year}年目・${r.grade}）` : `Best harvest: ${r.kg.toLocaleString()} kg (year ${r.year}, ${gradeText(r.grade)})`,
   confirmNewGame: () => LANG === 'ja' ? 'これまでの続きと記録は消えます。今日の日付から新しく始めますか？' : 'Your saved progress and records will be erased. Start a new game from today?',
   confirmReset: () => LANG === 'ja' ? '記録を消して最初からやり直しますか？' : 'Erase your records and start over?',

@@ -450,6 +450,7 @@ export function createField(scene, quality) {
   const cut = new Uint8Array(TOTAL);
   const planted = new Uint8Array(TOTAL); // 田植え期間中にプレイヤーが植えた株
   let harvestExtra = 0;                  // リワード広告で延ばした稲刈りの日数
+  let plantExtra = 0;                    // リワード広告で延ばした田植えの日数
   const o = new THREE.Object3D();
 
   // ---------- はざ掛け ----------
@@ -506,7 +507,7 @@ export function createField(scene, quality) {
   // 1株ぶんの表示を決める（耳が見えるなら true）
   function setHill(i, g, t, plowed) {
     let sx = 0, sy = 0, tilt = 0, ex = 0;
-    if (g && !plowed && (t >= PLANT_END || planted[i])) {
+    if (g && !plowed && (t >= PLANT_END + plantExtra || planted[i])) {
       if (cut[i] === 1) { sx = 1; sy = 0.13; }
       else if (cut[i] === 2) { sx = 1.15; sy = g.h * 0.9 * hs[i]; tilt = 1.2; ex = 1; }
       else {
@@ -532,7 +533,7 @@ export function createField(scene, quality) {
     const g = riceGrowth(t);
     const plowed = t >= PLOW_DAY || t < PLANT_START;
     // 稲の背丈は1日ではほとんど変わらないので、並べ直しは1日1回（重い処理でカクつかないように）
-    const key = `${Math.floor(t)}|${plowed}|${t >= PLANT_END}`;
+    const key = `${Math.floor(t)}|${plowed}|${t >= PLANT_END + plantExtra}`;
     if (!force && key === lastLayoutKey) return;
     lastLayoutKey = key;
     let visibleEars = 0;
@@ -714,5 +715,6 @@ export function createField(scene, quality) {
     paddyRect, inPaddy(x, z) { for (let p = 0; p < COLS * ROWS; p++) { const r = paddyRect(p); if (x > r.x && x < r.x + r.w && z > r.z && z < r.z + r.d) return true; } return false; },
     water, cut, planted, hx, hz, isHarvestable: (t) => t >= HARVEST_START && t < HARVEST_END + harvestExtra,
     setHarvestExtra(d) { harvestExtra = d; },
+    setPlantExtra(d) { plantExtra = d; lastLayoutKey = ''; },
   };
 }

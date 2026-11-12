@@ -59,8 +59,8 @@ function save() {
   if (!state.started) return;
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      year: state.year, t: state.t, speed: state.speed, harvestKg: state.harvestKg, harvestQ: state.harvestQ,
-      finalized: state.finalized, records: state.records, cut: field.serialize(), work: field.serializeWork(), harvestExtra: state.harvestExtra || 0, extendUsed: state.extendUsed || 0, rewardAsked: !!state.rewardAsked, farm: farm.serialize(), view: state.view, harvestPrompted: state.harvestPrompted,
+      year: state.year, t: state.t, startT: state.startT, speed: state.speed, harvestKg: state.harvestKg, harvestQ: state.harvestQ,
+      finalized: state.finalized, records: state.records, cut: field.serialize(), work: field.serializeWork(), harvestExtra: state.harvestExtra || 0, extendUsed: state.extendUsed || 0, rewardAsked: !!state.rewardAsked, helps: state.helps || 0, birdAsked: !!state.birdAsked, birdBack: !!state.birdBack, farm: farm.serialize(), view: state.view, harvestPrompted: state.harvestPrompted,
       calYear: state.calYear,
     }));
   } catch (e) { /* 保存できない環境 */ }
@@ -183,7 +183,9 @@ function updateHUD(tg) {
   const d = Math.floor(state.t) % 365;
   const hour = (state.t - Math.floor(state.t)) * 24;
   const hh = Math.floor(hour), mm = Math.floor((hour - hh) * 60 / 10) * 10;
-  ui.year.textContent = msg.yearDay(state.year, d + 1);
+  // 「N日目」は遊び始めた日を1日目として数える（暦の通し日ではない）
+  const played = Math.floor((state.year - 1) * 365 + state.t - (state.startT ?? state.t)) + 1;
+  ui.year.textContent = msg.yearDay(state.year, Math.max(1, played));
   { const md = monthDay(d); ui.date.textContent = fmtDate(md.month, md.day, new Date(state.calYear || 2026, md.month - 1, md.day).getDay()); }
   ui.time.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
   ui.sub.textContent = `${sekkiText(sekki(d))} ・ ${tr('wx.' + tg.kind)}`;
@@ -347,51 +349,69 @@ function drawTrail() {
   }
 }
 
-let lastRec = null, rewardOpen = false;
+let lastRec = null, rewardOpen = false, finalizing = false;
 // ---- リワード広告：稲刈りの期限が来たとき、広告を見ると3日延ばせる（1年に1回） ----
-function offerHarvestReward(left) {
-  state.rewardAsked = true;
+// 失敗を見届けてから（2.5秒後）、広告で取り返すかをたずねる。8秒で自動的に閉じる
+const askQueue = [];
+function askReward(kind, value, onDone) {
+  if (rewardOpen) { askQueue.push([kind, value, onDone]); return; } // 前の案内が終わってから出す
   rewardOpen = true;
   state.paused = true;
-  // 倒れかけた田んぼを見届けてから案内を出す
   setTimeout(() => {
-    $('rewardText').textContent = msg.rewardText(Math.ceil(left * 100));
+    const m = msg.reward(kind, value);
+    $('rwTag').textContent = m.tag; $('rwTitle').textContent = m.title; $('rewardText').textContent = m.text; $('rwYes').textContent = m.yes;
     $('rewardAsk').classList.add('show');
-    let sec = 8;
+    let sec = 8, answered = false;
     $('rewardCount').textContent = ` ${sec}`;
     const timer = setInterval(() => { sec--; $('rewardCount').textContent = ` ${sec}`; if (sec <= 0) done(false); }, 1000);
     async function done(watch) {
+      if (answered) return;
+      answered = true;
       clearInterval(timer);
-      if (!$('rewardAsk').classList.contains('show')) return;
       $('rewardAsk').classList.remove('show');
-      const r = watch ? await Ads.showRewarded() : 'skipped';
+      let r = 'skipped';
+      try { r = watch ? await Ads.showRewarded() : 'skipped'; } catch (e) { r = 'unavailable'; }
+      const ok = r === 'rewarded';
+      if (ok) { state.helps = (state.helps || 0) + 1; toast(msg.rewardDone(kind), 5); }
       rewardOpen = false;
-      if (r === 'rewarded') {
-        state.harvestExtra = (state.harvestExtra || 0) + 3;
-        state.extendUsed = (state.extendUsed || 0) + 1;
-        field.setHarvestExtra(state.harvestExtra);
-        toast(msg.extended(state.extendUsed), 5);
-      } else {
-        finalizeHarvest(true);
-      }
-      state.paused = false;
-      ui.pause.textContent = '❚❚';
+      onDone(ok);
+      if (askQueue.length) { askReward(...askQueue.shift()); return; }
+      if (!shown('result') && !shown('eventCard') && !shown('menu') && !rewardOpen) { state.paused = false; ui.pause.textContent = '❚❚'; }
     }
     $('btnRewardYes').onclick = () => done(true);
     $('btnRewardNo').onclick = () => done(false);
   }, 2500);
 }
+// 稲刈りの期限が来たとき、広告を見ると3日延ばせる（1年に1回）
+function offerHarvestReward(left) {
+  state.rewardAsked = true;
+  askReward('harvest', Math.ceil(left * 100), (ok) => {
+    if (ok) {
+      state.harvestExtra = (state.harvestExtra || 0) + 3;
+      state.extendUsed = (state.extendUsed || 0) + 1;
+      field.setHarvestExtra(state.harvestExtra);
+    } else finalizeHarvest(true);
+  });
+}
 
 function finalizeHarvest(late) {
-  if (state.finalized) return;
+  if (state.finalized || finalizing) return;
+  // スズメに食べられた分が多ければ、広告で取り返すかをたずねる（1年に1回）
+  const eaten = Math.min(state.harvestKg * 0.5, farm.rec.bird.lostKg);
+  if (Ads.canReward && !state.birdAsked && eaten >= 10) {
+    state.birdAsked = true;
+    finalizing = true;
+    askReward('bird', Math.round(eaten), (ok) => { finalizing = false; if (ok) state.birdBack = true; finalizeHarvest(late); });
+    return;
+  }
   state.finalized = true;
   let lost = 0;
   if (late) lost = field.lodgeRemaining();
   field.update(state.t, true);
-  const birdLoss = Math.min(state.harvestKg * 0.5, farm.rec.bird.lostKg);
+  const birdLoss = state.birdBack ? 0 : Math.min(state.harvestKg * 0.5, farm.rec.bird.lostKg);
   state.harvestKg = Math.max(0, state.harvestKg - birdLoss);
   const kg = state.harvestKg;
-  const rec = { year: state.year, kg: Math.round(kg), grade: kg > 0 ? grade(state.harvestQ) : '—', rate: Math.round(field.countCutCached / TOTAL * 100), ext: state.extendUsed || 0 };
+  const rec = { year: state.year, kg: Math.round(kg), grade: kg > 0 ? grade(state.harvestQ) : '—', rate: Math.round(field.countCutCached / TOTAL * 100), ext: state.helps || 0 };
   lastRec = rec;
   rec.work = msg.workSummary(farm.rec, farm.factors(), birdLoss, farm.WEEDS);
   state.records = state.records.filter(r => r.year !== state.year).concat(rec);
@@ -401,7 +421,7 @@ function finalizeHarvest(late) {
 }
 function showResult(rec, lost) {
   const bowls = Math.round(rec.kg * 0.9 * 1000 / 65); // 精米歩留まり90%、ごはん1杯=精米65g
-  $('resultBody').innerHTML = msg.result(rec, bowls, lost ? Math.round(lost / TOTAL * 100) : 0) + (rec.ext ? `<p class="note">${msg.extended(rec.ext)}</p>` : '') + (rec.work || '');
+  $('resultBody').innerHTML = msg.result(rec, bowls, lost ? Math.round(lost / TOTAL * 100) : 0) + (rec.ext ? `<p class="note">${msg.helped(rec.ext)}</p>` : '') + (rec.work || '');
   $('result').classList.add('show');
 }
 
@@ -445,6 +465,7 @@ function newYear() {
   state.calYear = (state.calYear || 2026) + 1;
   state.harvestKg = 0; state.harvestQ = 0; state.finalized = false; state.harvestPrompted = false;
   state.harvestExtra = 0; state.extendUsed = 0; state.rewardAsked = false; field.setHarvestExtra(0);
+  state.helps = 0; state.birdAsked = false; state.birdBack = false;
   field.resetYear(); field.countCutCached = 0; farm.reset();
   field.update(state.t, true);
   const last = state.records[state.records.length - 1];
@@ -498,8 +519,15 @@ function frame(now) {
   const day = Math.floor(t);
   tg = updateWeather(gdt);
   {
-    const fr = farm.update(dt, t % 365, time, { running: state.started && !state.paused, harvestDone: state.finalized, wx, gdt, day: lastDay });
-    if (state.started) for (const e of fr.events) { toast(msg.workEvent(e, farm.rec), 8); ui.toast.classList.add('work'); }
+    const fr = farm.update(dt, t % 365, time, { running: state.started && !state.paused, harvestDone: state.finalized, wx, gdt, day: lastDay, canReward: state.started && Ads.canReward });
+    if (state.started) for (const e of fr.events) {
+      if (e.startsWith('offer:')) {
+        const kind = e.slice(6);
+        askReward(kind, farm.offerValue(kind), (ok) => farm.resolveOffer(kind, ok));
+        continue;
+      }
+      toast(msg.workEvent(e, farm.rec), 8); ui.toast.classList.add('work');
+    }
     if (state.started) for (const ev of fr.started) {
       if (ev.id === 'bird' && state.finalized) continue;
       if (state.speed > 1) setSpeed(1);
@@ -573,7 +601,9 @@ function startGame(opt) {
   const now = new Date();
   if (saved) {
     Object.assign(state, { year: saved.year, t: saved.t, harvestKg: saved.harvestKg, harvestQ: saved.harvestQ || 0, finalized: saved.finalized, records: saved.records || [], harvestPrompted: !!saved.harvestPrompted, calYear: saved.calYear || now.getFullYear() });
-    Object.assign(state, { harvestExtra: saved.harvestExtra || 0, extendUsed: saved.extendUsed || 0, rewardAsked: !!saved.rewardAsked });
+    // 以前の保存データには開始日がないので、続きを始めた日を1日目とする
+    state.startT = saved.startT ?? Math.floor(saved.t) - (saved.year - 1) * 365;
+    Object.assign(state, { harvestExtra: saved.harvestExtra || 0, extendUsed: saved.extendUsed || 0, rewardAsked: !!saved.rewardAsked, helps: saved.helps || 0, birdAsked: !!saved.birdAsked, birdBack: !!saved.birdBack });
     field.setHarvestExtra(state.harvestExtra);
     field.deserialize(saved.cut); field.deserializeWork(saved.work); farm.reset(); farm.deserialize(saved.farm); farm.skipPast(saved.t % 365);
     setSpeed(1);
@@ -585,7 +615,7 @@ function startGame(opt) {
     };
     state.t = starts[opt] ?? starts.today;
     state.calYear = now.getFullYear();
-    state.year = 1; state.records = []; state.harvestKg = 0; state.harvestQ = 0;
+    state.year = 1; state.startT = Math.floor(state.t); state.records = []; state.harvestKg = 0; state.harvestQ = 0;
     field.resetYear(); farm.reset(); farm.skipPast(state.t % 365);
     // 稲刈り期間を過ぎてから始めた場合は刈り取り済みの田んぼにする
     state.finalized = state.t >= HARVEST_END && state.t >= PLANT_START;

@@ -66,6 +66,7 @@ export function createFarmwork({ scene, field, fx, audio }) {
     till: null, level: null, plant: null, weed: { spawned: 0, pulled: 0, done: false }, bug: { spawned: 0, caught: 0, done: false },
     bird: { lostKg: 0, shooed: 0, done: false }, house: { load: 0, cleared: 0, collapsed: false, warned: false }, melt: null,
     levee: { fixed: 0, done: false, leak: 0 }, carryLeak: 0, closed: {}, skipped: {},
+    extra: {}, offer: {},   // リワード広告：延ばした日数と、案内の状態（pending / used / declined）
   });
   let rec = fresh();
   let lastT = null;
@@ -403,14 +404,26 @@ export function createFarmwork({ scene, field, fx, audio }) {
     }
   }
 
-  function active(t) { return EVENTS.filter(ev => t >= ev.start && t < ev.end && !rec.closed[ev.id]); }
+  // リワード広告で延ばした分を含めた期限
+  const evEnd = (ev) => ev.end + ((rec.extra && rec.extra[ev.id]) || 0);
+  function active(t) { return EVENTS.filter(ev => t >= ev.start && t < evEnd(ev) && !rec.closed[ev.id]); }
 
   function update(dt, t, time, opts) {
     const started = [];
     events.length = 0;
     if (lastT !== null && t > lastT) for (const ev of EVENTS) if (lastT < ev.start && t >= ev.start) started.push(ev);
     lastT = t;
-    for (const ev of EVENTS) if (t >= ev.end && !rec.closed[ev.id] && t < ev.end + 30) close(ev);
+    for (const ev of EVENTS) {
+      if (!(t >= evEnd(ev) && !rec.closed[ev.id] && t < evEnd(ev) + 30)) continue;
+      // 作業がやり残しのまま期限になったら、広告で延ばす（取り返す）かをたずねる（1年に1回）
+      const unfinished = isUnfinished(ev.id);
+      if (unfinished && opts.canReward && opts.running && !rec.offer[ev.id]) {
+        rec.offer[ev.id] = 'pending';
+        events.push('offer:' + ev.id);
+      }
+      if (rec.offer[ev.id] === 'pending') continue; // 返事を待つ
+      close(ev);
+    }
     layoutWeeds(t);
     const run = opts.running;
     // ハウスの雪：雪の日に積もり、重くなりすぎるとつぶれる
@@ -418,7 +431,10 @@ export function createFarmwork({ scene, field, fx, audio }) {
     if (houseOn && run && !rec.house.collapsed) {
       const snowing = opts.wx.kind === 'snow' ? opts.wx.precip : 0;
       rec.house.load += snowing * opts.gdt * 0.16;
-      if (rec.house.load >= 1) { rec.house.collapsed = true; events.push('collapse'); audio.crash && audio.crash(); buzz('crash'); }
+      if (rec.house.load >= 1) {
+        rec.house.collapsed = true; events.push('collapse'); audio.crash && audio.crash(); buzz('crash');
+        if (opts.canReward && !rec.offer.house) { rec.offer.house = 'pending'; events.push('offer:house'); }
+      }
       else if (rec.house.load > 0.7 && !rec.house.warned) { rec.house.warned = true; events.push('houseWarn'); }
       if (rec.house.load < 0.5) rec.house.warned = false;
     }
@@ -529,7 +545,7 @@ export function createFarmwork({ scene, field, fx, audio }) {
     const levelF = rec.level == null ? 1 : 0.94 + 0.06 * rec.level;
     const plantF = rec.plant == null ? 1 : (rec.plant.self + 0.85 * (rec.plant.total - rec.plant.self)) / rec.plant.total;
     const weedF = !rec.skipped.weed && (rec.weed.done || rec.weed.pulled) ? 1 - 0.12 * weedRemaining() / WEEDS : 1;
-    const bugQ = rec.bug.spawned ? 1 - 0.1 * (1 - rec.bug.caught / rec.bug.spawned) : 1;
+    const bugQ = rec.bug.spawned && !rec.bug.forgiven ? 1 - 0.1 * (1 - rec.bug.caught / rec.bug.spawned) : 1;
     const houseF = rec.house.collapsed ? 0.9 : 1;                       // 苗が足りず、買い苗で遅れる
     const meltF = rec.melt == null ? 1 : 0.98 + 0.05 * rec.melt;          // 雪どけが早いと春の作業が順調
     const leakF = 1 - 0.06 * (rec.carryLeak || 0);                         // 去年の畦の穴から水がもれる
@@ -548,7 +564,43 @@ export function createFarmwork({ scene, field, fx, audio }) {
     return 0;
   }
 
+  // ---- リワード広告：作業の失敗を取り返す ----
+  // 延長できる作業と日数
+  const EXTEND_DAYS = { till: 2, level: 2, plant: 2, weed: 3, melt: 2, levee: 2 };
+  const holesLeft = () => holes.filter(h => !h.fixed).length;
+  // 期限の時点で「失敗」とみなす条件
+  function isUnfinished(id) {
+    if (rec.skipped[id]) return false;
+    if (id === 'till') return field.tillRatio() < 0.95;
+    if (id === 'level') return field.levelRatio() < 0.95;
+    if (id === 'plant') return field.countPlanted() / TOTAL < 0.99;
+    if (id === 'weed') return weedRemaining() >= 5;
+    if (id === 'melt') return field.meltRatio() < 0.5;
+    if (id === 'levee') return holesLeft() >= 3;
+    if (id === 'bug') return rec.bug.spawned > 0 && rec.bug.spawned - rec.bug.caught >= Math.max(3, rec.bug.spawned * 0.2);
+    return false;
+  }
+  // 最後まで見たら延長・修理・帳消し。見なければそのまま期限で締める
+  function resolveOffer(kind, rewarded) {
+    rec.offer[kind] = rewarded ? 'used' : 'declined';
+    if (!rewarded) return;
+    if (EXTEND_DAYS[kind]) { rec.extra[kind] = EXTEND_DAYS[kind]; if (kind === 'plant') field.setPlantExtra(EXTEND_DAYS.plant); }
+    if (kind === 'house') { rec.house.collapsed = false; rec.house.load = 0.2; rec.house.warned = false; }
+    if (kind === 'bug') rec.bug.forgiven = true;   // 逃したカメムシの被害をなかったことに
+  }
+  function offerValue(kind) {
+    if (kind === 'till') return Math.ceil((1 - field.tillRatio()) * 100);
+    if (kind === 'level') return Math.ceil((1 - field.levelRatio()) * 100);
+    if (kind === 'plant') return Math.ceil((1 - field.countPlanted() / TOTAL) * 100);
+    if (kind === 'weed') return weedRemaining();
+    if (kind === 'melt') return Math.ceil((1 - field.meltRatio()) * 100);
+    if (kind === 'levee') return holesLeft();
+    if (kind === 'bug') return rec.bug.spawned - rec.bug.caught;
+    return 0;
+  }
+
   function reset() {
+    field.setPlantExtra(0);
     const carry = rec.levee && rec.levee.done ? rec.levee.leak : 0;
     rec = fresh(); rec.carryLeak = carry;
     holes.forEach(h => (h.fixed = false)); weeds.forEach(w => (w.pulled = false));
@@ -560,11 +612,13 @@ export function createFarmwork({ scene, field, fx, audio }) {
   function deserialize(d) {
     if (!d) return;
     rec = Object.assign(fresh(), d.rec || {});
-    rec.skipped = rec.skipped || {};
+    rec.skipped = rec.skipped || {}; rec.extra = rec.extra || {}; rec.offer = rec.offer || {};
+    for (const k in rec.offer) if (rec.offer[k] === 'pending') rec.offer[k] = 'declined';
+    field.setPlantExtra(rec.extra.plant || 0);
     if (d.weeds) weeds.forEach((w, i) => (w.pulled = d.weeds[i] === '1'));
     if (d.holes) holes.forEach((h, i) => (h.fixed = d.holes[i] === '1'));
     rec.house = Object.assign({ load: 0, cleared: 0, collapsed: false, warned: false }, rec.house || {});
     rec.levee = Object.assign({ fixed: 0, done: false, leak: 0 }, rec.levee || {});
   }
-  return { HOLES, update, swipe, rayTest, rayHit, active, factors, progress, reset, serialize, deserialize, skipPast, get rec() { return rec; }, WEEDS };
+  return { HOLES, update, swipe, rayTest, rayHit, active, factors, resolveOffer, offerValue, evEnd, progress, reset, serialize, deserialize, skipPast, get rec() { return rec; }, WEEDS };
 }
