@@ -670,14 +670,15 @@ $('btnHowtoPlay').onclick = async () => {
 $('btnToTitle').onclick = backToTitle;
 $('btnResultTitle').onclick = () => { $('result').classList.remove('show'); backToTitle(); };
 $('btnShare').onclick = () => shareResult(lastRec);
+const SHARE_URL = 'https://techgym.jp/column/claude-code-game-inaho/'; // 紹介記事
 async function shareResult(rec) {
   if (!rec) return;
   const text = msg.shareText(rec);
   const share = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Share;
   try {
-    if (native && share) await share.share({ text, dialogTitle: tr('share') });
-    else if (navigator.share) await navigator.share({ text });
-    else { await navigator.clipboard.writeText(text); toast(LANG === 'ja' ? '結果をコピーしました' : 'Copied the result', 3); }
+    if (native && share) await share.share({ title: tr('share'), text, url: SHARE_URL, dialogTitle: tr('share') });
+    else if (navigator.share) await navigator.share({ text, url: SHARE_URL });
+    else { await navigator.clipboard.writeText(text + '\n' + SHARE_URL); toast(LANG === 'ja' ? '結果をコピーしました' : 'Copied the result', 3); }
   } catch (e) { /* 共有をやめた */ }
 }
 $('btnPause').onclick = () => { if (shown('menu')) resumeFromPause(); else openPause(); };
