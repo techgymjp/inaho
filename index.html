@@ -32,12 +32,12 @@
   </section>
 
   <section id="harvestPanel">
-    <div class="hTop"><span>刈り取り <b id="hPct">0%</b></span><span id="hKg">0 kg</span></div>
+    <div class="hTop"><span><span data-i18n="harvest.cut">刈り取り</span> <b id="hPct">0%</b></span><span id="hKg">0 kg</span></div>
     <div class="hBar"><div id="hFill"></div></div>
     <div class="hBottom"><span id="hGrade"></span></div>
   </section>
 
-  <div id="swipeHint">田んぼの稲を指でなぞって刈り取る</div>
+  <div id="swipeHint" data-i18n="harvest.hint">田んぼの稲を指でなぞって刈り取る</div>
   <div id="toast"></div>
 
   <nav id="controls">
@@ -50,47 +50,48 @@
 
   <div id="start" class="overlay show">
     <div class="startInner">
-      <p class="pre">福島・山あいの田んぼより</p>
+      <p class="pre" data-i18n="title.pre">福島・山あいの田んぼより</p>
       <h1>水田<span>365</span>日</h1>
-      <p class="lead">山に囲まれた田んぼの一年を、<br>一日一分で見守る。</p>
-      <p class="lead small">雪どけ、水張り、田植え、黄金の穂。<br>稲刈りのときだけ、あなたの手で。</p>
+      <p class="lead" data-i18n="title.lead">山に囲まれた田んぼの一年を、<br>一日一分で見守る。</p>
+      <p class="lead small" data-i18n="title.lead2">雪どけ、水張り、田植え、黄金の穂。<br>稲刈りのときだけ、あなたの手で。</p>
       <div class="buttons">
-        <button data-start="continue" id="btnContinue" hidden class="primary">つづきから</button>
-        <button data-start="spring" class="primary">田起こしから始める<small>4月20日</small></button>
-        <button data-start="today">今日の日付から<small id="todayLabel"></small></button>
-        <button data-start="harvest">稲刈りの直前から<small>9月19日</small></button>
-        <button data-start="jan">元日から<small>1月1日</small></button>
+        <button data-start="continue" id="btnContinue" hidden class="primary"><span data-i18n="start.continue">つづきから</span></button>
+        <button data-start="spring" class="primary"><span data-i18n="start.spring">田起こしから始める</span><small id="lblSpring">4月20日</small></button>
+        <button data-start="today"><span data-i18n="start.today">今日の日付から</span><small id="todayLabel"></small></button>
+        <button data-start="harvest"><span data-i18n="start.harvest">稲刈りの直前から</span><small id="lblHarvest">9月19日</small></button>
+        <button data-start="jan"><span data-i18n="start.jan">元日から</span><small id="lblJan">1月1日</small></button>
       </div>
-      <p class="tiny">1日＝1分（1年で約6時間）。早送りもできます。音が出ます。</p>
+      <p class="tiny" data-i18n="start.tiny">1日＝1分（1年で約6時間）。早送りもできます。音が出ます。</p>
     </div>
   </div>
 
   <div id="menu" class="overlay">
     <div class="panel">
-      <h2>収穫の記録</h2>
+      <h2 data-i18n="menu.records">収穫の記録</h2>
       <table><tbody id="records"></tbody></table>
-      <h2>あそびかた</h2>
+      <h2 data-i18n="menu.howto">あそびかた</h2>
       <ul>
-        <li>田んぼの一年が、1日＝1分で進みます（×10〜×600で早送り）。</li>
-        <li>ドラッグで見回し、「視点」で場所を切り替えます。</li>
-        <li>9月22日〜10月20日は稲刈り。いつもの景色のまま、田んぼの稲をスワイプして刈り取ります（田んぼの外からのドラッグは見回し）。</li>
-        <li>9月28日〜10月8日に刈ると一等米。遅れると稲が倒れてしまいます。</li>
-        <li>農作業の時期は会津地方の一般的な目安をもとにしています。</li>
-        <li>遠くの線路をローカル線が走ります。</li>
+        <li data-i18n="howto.1"></li>
+        <li data-i18n="howto.2"></li>
+        <li data-i18n="howto.3"></li>
+        <li data-i18n="howto.4"></li>
+        <li data-i18n="howto.5"></li>
+        <li data-i18n="howto.6"></li>
       </ul>
       <div class="buttons">
         <button id="btnQuality"></button>
-        <button id="btnReset" class="danger">最初からやり直す</button>
-        <button id="btnCloseMenu" class="primary">閉じる</button>
+        <button id="btnLang"></button>
+        <button id="btnReset" class="danger" data-i18n="menu.reset">最初からやり直す</button>
+        <button id="btnCloseMenu" class="primary" data-i18n="menu.close">閉じる</button>
       </div>
     </div>
   </div>
 
   <div id="result" class="overlay">
     <div class="panel">
-      <h2>今年の収穫</h2>
+      <h2 data-i18n="result.title">今年の収穫</h2>
       <div id="resultBody"></div>
-      <div class="buttons"><button id="btnCloseResult" class="primary">田んぼへ戻る</button></div>
+      <div class="buttons"><button id="btnCloseResult" class="primary" data-i18n="result.back">田んぼへ戻る</button></div>
     </div>
   </div>
 

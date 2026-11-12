@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { Water } from 'three/addons/Water.js';
 import { makeNoise, GLSL_NOISE } from './noise.js';
 import { toon, hex } from './toon.js';
+import { grassTexture } from './textures.js';
+export const GRASS_TEX = grassTexture();
 import { mergeGeos, BASIN_LEVEL } from './landscape.js';
 import {
   clamp, smooth, riceGrowth, waterLevel, snowCover, foliage, PLANT_START, PLANT_END,
@@ -262,13 +264,18 @@ export function createField(scene, quality) {
     leveeGeos.push(g);
   }
   const leveeMat = toon({ color: 0x6cb83f });
+  const leveeTexAmt = { value: 1 };
   leveeMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uGrass = { value: GRASS_TEX };
+    sh.uniforms.uTexAmt = leveeTexAmt;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp2;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWp2 = (modelMatrix*vec4(transformed,1.0)).xyz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp2;\n' + GLSL_NOISE)
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp2; uniform sampler2D uGrass; uniform float uTexAmt;\n' + GLSL_NOISE)
       .replace('#include <color_fragment>', `#include <color_fragment>
-        float gn = vnoise(vWp2.xz*3.0)*0.5 + vnoise(vWp2.xz*11.0)*0.5;
-        diffuseColor.rgb *= 0.9 + 0.16*step(0.5, gn);
+        // 草はテクスチャで表現（上面は xz、斜面は xy/zy で投影）
+        vec3 an = abs(normalize(cross(dFdx(vWp2), dFdy(vWp2))));
+        float gt = an.y > 0.6 ? texture2D(uGrass, vWp2.xz*0.45).r : (an.x > an.z ? texture2D(uGrass, vWp2.zy*vec2(0.45,0.9)).r : texture2D(uGrass, vWp2.xy*vec2(0.45,0.9)).r);
+        diffuseColor.rgb *= mix(1.0, 0.45 + 0.75*gt, uTexAmt);
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.32,0.24,0.15), smoothstep(0.12, 0.0, vWp2.y)*0.6);`);
   };
   const levees = new THREE.Mesh(mergeGeos(leveeGeos), leveeMat);
@@ -374,41 +381,6 @@ export function createField(scene, quality) {
   const cut = new Uint8Array(TOTAL);
   const o = new THREE.Object3D();
 
-  // ---------- 畦草（インスタンス） ----------
-  const grassGeo = bladeClump(5, 2);
-  const grassMat = windMaterial({ color: 0x3f6a22, side: THREE.DoubleSide }, uniforms, 1.6);
-  const grassPts = [];
-  const addGrass = (x, z) => grassPts.push([x, z]);
-  for (let c = 0; c <= COLS; c++) {
-    const x = X0 + LEVEE / 2 + c * (PW + LEVEE);
-    for (let z = Z0; z < -Z0; z += 0.22) addGrass(x + (N.rnd() - 0.5) * (LEVEE + 0.3), z + N.rnd() * 0.2);
-  }
-  for (let r = 0; r <= ROWS; r++) {
-    const z = Z0 + LEVEE / 2 + r * (PD + LEVEE);
-    for (let x = X0; x < -X0; x += 0.22) addGrass(x + N.rnd() * 0.2, z + (N.rnd() - 0.5) * (LEVEE + 0.3));
-  }
-  // 田んぼの外周の草地
-  for (let i = 0; i < quality.grass; i++) {
-    const a = N.rnd() * Math.PI * 2, rr = 34 + Math.pow(N.rnd(), 1.5) * 50;
-    const x = Math.cos(a) * rr * 1.2, z = Math.sin(a) * rr;
-    if (Math.abs(x) < FIELD_W / 2 + 0.6 && Math.abs(z) < FIELD_D / 2 + 1.6) continue;
-    if (Math.abs(z - 32) < 2.4) continue; // 農道
-    addGrass(x, z);
-  }
-  const grass = new THREE.InstancedMesh(grassGeo, grassMat, grassPts.length);
-  grassPts.forEach(([x, z], i) => {
-    o.position.set(x, BASIN_LEVEL - 0.02, z);
-    o.rotation.set(0, N.rnd() * 6.28, 0);
-    const s = 0.25 + N.rnd() * 0.35;
-    o.scale.set(s * 1.4, s, s * 1.4);
-    o.updateMatrix();
-    grass.setMatrixAt(i, o.matrix);
-    const v = 0.7 + N.rnd() * 0.5;
-    grass.setColorAt(i, new THREE.Color(v, v * (0.9 + N.rnd() * 0.2), v * 0.9));
-  });
-  grass.frustumCulled = false;
-  group.add(grass);
-
   // ---------- はざ掛け ----------
   const haza = new THREE.Group();
   const woodMat = toon({ color: 0x7a5f45 });
@@ -446,6 +418,9 @@ export function createField(scene, quality) {
   bundles.castShadow = true;
   bundles.count = 0;
   haza.add(bundles);
+  // 田んぼの東側の空き地に並べる（畦道からの眺めをさえぎらない）
+  haza.rotation.y = Math.PI / 2;
+  haza.position.set(6.5, 0, -2);
   group.add(haza);
 
   // ---------- 季節・日ごとの更新 ----------
@@ -518,9 +493,8 @@ export function createField(scene, quality) {
     water.position.y = 0.015 + 0.07 * wl;
     // 畦の色
     tmp.copy(leveeCol.dry).lerp(leveeCol.summer, f.green).lerp(leveeCol.spring, f.fresh).lerp(leveeCol.snow, sc);
-    leveeMat.color.copy(tmp);
-    grassMat.color.copy(tmp).multiplyScalar(1.15);
-    grass.visible = sc < 0.6;
+    leveeMat.color.copy(tmp).multiplyScalar(1.12);
+    leveeTexAmt.value = 1 - sc * 0.8;
     // 稲の色
     if (g) {
       tmp.copy(riceCol.young).lerp(riceCol.deep, smooth(PLANT_START + 10, doyOf(7, 10), t))

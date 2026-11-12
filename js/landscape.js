@@ -1,6 +1,7 @@
 // 山・空・雲・光・森・家などの風景
 import * as THREE from 'three';
 import { toon, hex } from './toon.js';
+import { grassTexture, thatchTexture, boardTexture, tinTexture, shojiTexture, plasterTexture, tileTexture } from './textures.js';
 import { makeNoise, GLSL_NOISE } from './noise.js';
 import { clamp, smooth, foliage, snowLine, snowCover, sakura } from './calendar.js';
 
@@ -203,10 +204,12 @@ export function createLandscape(scene, renderer, quality) {
   const tCol = new Float32Array(vCount * 3);
   tGeo.setAttribute('color', new THREE.BufferAttribute(tCol, 3));
   const tMat = toon({ vertexColors: true });
+  const terrainGrass = grassTexture();
   tMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uGrass = { value: terrainGrass };
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWp = (modelMatrix*vec4(transformed,1.0)).xyz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp;\n' + GLSL_NOISE)
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp; uniform sampler2D uGrass;\n' + GLSL_NOISE)
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
         // 田んぼの部分は地形をくり抜く
         if (abs(vWp.x) < ${(FIELD_HALF_W).toFixed(2)} && abs(vWp.z) < ${(FIELD_HALF_D).toFixed(2)}) discard;`)
@@ -222,7 +225,10 @@ export function createLandscape(scene, renderer, quality) {
         diffuseColor.rgb *= mix(1.0, 0.86 + 0.22*blob, k);
         diffuseColor.rgb *= 0.93 + 0.14*step(0.5, broad);
         float g = smoothstep(4.0, 1.0, vWp.y);
-        diffuseColor.rgb *= mix(1.0, 0.94 + 0.1*step(0.5, vnoise(vWp.xz*0.08)), g);`);
+        diffuseColor.rgb *= mix(1.0, 0.94 + 0.1*step(0.5, vnoise(vWp.xz*0.08)), g);
+        // 近くの草地は草のテクスチャで
+        float near = g * (1.0 - smoothstep(60.0, 260.0, camD));
+        diffuseColor.rgb *= mix(1.0, 0.5 + 0.7*texture2D(uGrass, vWp.xz*0.4).r, near);`);
   };
   const terrain = new THREE.Mesh(tGeo, tMat);
   terrain.receiveShadow = true;
@@ -368,16 +374,41 @@ export function createLandscape(scene, renderer, quality) {
   return { group, terrain, sky, sun, updateSeason, updateSky, sunDir, forest, village, railway };
 }
 
+// ---------- 杉（まっすぐな幹と、段々に重なる細長い樹冠） ----------
+export function cedarGeometry(layers = 10, detail = 1, seed = 3) {
+  const R = makeNoise(seed).rnd;
+  const parts = [new THREE.CylinderGeometry(0.035, 0.07, 2.2, 6).translate(0, 1.1, 0)];
+  const base = 0.55, top = 2.25;
+  for (let i = 0; i < layers; i++) {
+    const t = i / (layers - 1);
+    const y = base + (top - base) * t;
+    const rad = 0.27 * Math.pow(1 - t, 0.85) + 0.035;
+    const g = new THREE.IcosahedronGeometry(1, detail);
+    const p = g.attributes.position;
+    for (let k = 0; k < p.count; k++) {
+      const x = p.getX(k), yy = p.getY(k), z = p.getZ(k);
+      const j = 1 + (R() - 0.5) * 0.35;                  // 葉むらのでこぼこ
+      p.setXYZ(k, x * rad * j, yy * (rad * 0.9 + 0.05) * (yy < 0 ? 0.55 : 1.0), z * rad * j);
+    }
+    g.translate((R() - 0.5) * 0.04, y, (R() - 0.5) * 0.04);
+    parts.push(g);
+  }
+  const out = mergeGeos(parts);
+  // 樹冠は外向き＋上向きの法線（柔らかい陰影）
+  const P = out.attributes.position, Nn = out.attributes.normal;
+  for (let k = 6 * 2 * 3 * 2; k < P.count; k++) {
+    const v = new THREE.Vector3(P.getX(k), 0.35, P.getZ(k)).normalize();
+    Nn.setXYZ(k, v.x, v.y, v.z);
+  }
+  return out;
+}
+
 // ---------- 森 ----------
 function buildForest(quality) {
   const group = new THREE.Group();
   // 杉（三段の円錐）
-  const cone = mergeGeos([
-    new THREE.ConeGeometry(0.55, 0.55, 7).translate(0, 0.42, 0),
-    new THREE.ConeGeometry(0.42, 0.45, 7).translate(0, 0.66, 0),
-    new THREE.ConeGeometry(0.28, 0.4, 7).translate(0, 0.85, 0),
-    new THREE.CylinderGeometry(0.05, 0.06, 0.25, 5).translate(0, 0.12, 0),
-  ]);
+  // 杉林（植林）。樹冠の高さを抑えて遠景でも細長いシルエットに
+  const cone = cedarGeometry(7, 0, 17).scale(1.15, 0.55, 1.15);
   // 広葉樹（いくつかの房が集まった樹冠）
   const lumps = [];
   for (let k = 0; k < 5; k++) {
@@ -447,11 +478,12 @@ function buildForest(quality) {
   const conifers = mk(cone, placeC), broads = mk(broadGeo, placeB);
   group.add(conifers, broads);
 
-  const c = new THREE.Color(), c2 = new THREE.Color();
+  const c = new THREE.Color(), c2 = new THREE.Color(), cedarWinter = hex('#6b5a36');
   function updateSeason(t, col) {
     const f = foliage(t), sl = snowLine(t), sc = snowCover(t);
     placeC.forEach((p, i) => {
       c.copy(col.conifer).multiplyScalar(0.75 + p.hue * 0.6);
+      c.lerp(cedarWinter, (1 - f.green) * 0.45); // 冬の杉は赤茶色がかる
       const s = Math.max(smooth(sl - 50, sl + 50, p.h), sc * 0.6);
       c.lerp(col.snow, s * 0.55);
       conifers.setColorAt(i, c);
@@ -497,53 +529,176 @@ function buildVillage() {
   const group = new THREE.Group();
   const std = (c) => toon({ color: c });
 
-  // 農家（土壁・瓦屋根・下屋）
+  // ---- 古民家（茅葺きの寄棟、しっくい壁と黒い柱、縁側と障子） ----
+  const T = {
+    thatch: thatchTexture(), board: boardTexture('#4a3a2c'), barn: boardTexture('#6a5846'), tin: tinTexture(),
+    shoji: shojiTexture(), plaster: plasterTexture(), tile: tileTexture(),
+  };
+  const rep = (t, x, y) => { const c = t.clone(); c.repeat.set(x, y); c.needsUpdate = true; return c; };
+  const box = (w, h, d, m, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); return o; };
+  const wood = std('#3a2b20'), stone = std('#8d8a82'), darkM = std('#1e1a17');
   const house = new THREE.Group();
-  const wall = std(0xd9d2c0, 0.9), wood = std(0x3b2a1e, 0.8), roofM = std(0x2c3036, 0.55, 0.15);
-  const body = new THREE.Mesh(new THREE.BoxGeometry(14, 5.2, 9), wall);
-  body.position.y = 2.6;
-  const base = new THREE.Mesh(new THREE.BoxGeometry(14.2, 1.0, 9.2), wood);
-  base.position.y = 0.5;
-  const roof = new THREE.Mesh(hipRoof(16.4, 11.2, 4.2), roofM);
-  roof.position.y = 5.2;
-  const beams = new THREE.Group();
-  for (let i = -3; i <= 3; i++) {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(0.22, 4.4, 0.12), wood);
-    b.position.set(i * 2.2, 2.9, 4.52);
-    beams.add(b);
+  const HW = 16, HD = 10, WH = 3.3;
+  house.add(box(HW + 0.4, 0.5, HD + 0.4, stone, 0, 0.25, 0));                         // 石の基礎
+  house.add(box(HW, WH, HD, toon({ map: rep(T.plaster, 3, 1) }), 0, 0.5 + WH / 2, 0)); // しっくい壁
+  house.add(box(HW + 0.04, 1.1, HD + 0.04, toon({ map: rep(T.board, 8, 0.6) }), 0, 0.5 + 0.55, 0)); // 下見板
+  for (let i = 0; i <= 8; i++) for (const side of [-1, 1]) {                           // 柱
+    house.add(box(0.24, WH, 0.24, wood, -HW / 2 + i * HW / 8, 0.5 + WH / 2, side * (HD / 2 + 0.02)));
   }
-  const win = new THREE.Mesh(new THREE.BoxGeometry(8, 1.6, 0.1), std(0x1a1d22, 0.2, 0.3));
-  win.position.set(0, 2.6, 4.53);
-  house.add(body, base, roof, beams, win);
-  house.position.set(-62, BASIN_LEVEL, 8);
-  house.rotation.y = Math.PI * 0.5;
+  for (let i = 0; i <= 5; i++) for (const side of [-1, 1]) house.add(box(0.24, WH, 0.24, wood, side * (HW / 2 + 0.02), 0.5 + WH / 2, -HD / 2 + i * HD / 5));
+  for (const y of [0.5 + WH - 0.15, 0.5 + 1.9]) {                                     // 梁・貫
+    house.add(box(HW + 0.1, 0.22, HD + 0.1, wood, 0, y, 0));
+  }
+  // 正面：縁側と障子、土間の入口
+  house.add(box(HW * 0.62, 0.12, 1.3, toon({ map: rep(T.board, 1, 6) }), -HW * 0.17, 0.95, HD / 2 + 0.65));
+  for (let i = 0; i < 8; i++) {
+    const sh = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 2.1), toon({ map: T.shoji }));
+    sh.position.set(-HW / 2 + 0.9 + i * 1.22, 2.1, HD / 2 + 0.03);
+    house.add(sh);
+  }
+  house.add(box(2.2, 2.6, 0.1, darkM, HW / 2 - 2.6, 1.8, HD / 2 + 0.03));               // 土間の大戸口
+  house.add(box(2.4, 0.2, 0.2, wood, HW / 2 - 2.6, 3.15, HD / 2 + 0.1));
+  // 茅葺き屋根：厚みのある寄棟
+  const thatchM = toon({ map: rep(T.thatch, 4, 2) });
+  const RW = HW + 3.2, RD = HD + 3.2, RH = 7.2, TH = 0.85;
+  const roof = new THREE.Mesh(hipRoofUV(RW, RD, RH), thatchM);
+  roof.position.y = 0.5 + WH + TH;
+  const eave = new THREE.Mesh(roofRim(RW, RD, TH), toon({ map: rep(T.thatch, 12, 0.4) }));
+  eave.position.y = 0.5 + WH;
+  const soffit = box(RW, 0.05, RD, std('#2c241c'), 0, 0.5 + WH, 0);
+  const ridgeLen = RW - RD + 0.6;
+  const ridge = box(ridgeLen, 0.7, 0.9, std('#2b2723'), 0, 0.5 + WH + TH + RH + 0.1, 0);
+  house.add(roof, eave, soffit, ridge);
+  for (let i = 0; i < 7; i++) {                                                         // 棟の押さえ（くら）
+    const k = box(0.18, 0.4, 1.3, wood, -ridgeLen / 2 + 0.3 + i * (ridgeLen - 0.6) / 6, 0.5 + WH + TH + RH + 0.45, 0);
+    house.add(k);
+  }
+  const houseRoofMats = [thatchM, eave.material];
+  house.position.set(-64, BASIN_LEVEL, 6);
+  house.rotation.y = Math.PI * 0.5;  // 正面を東（田んぼ側）へ
   house.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  // 作業小屋（トタン屋根）
-  const shed = new THREE.Group();
-  const sb = new THREE.Mesh(new THREE.BoxGeometry(7, 3.6, 5), std(0x5a4636, 0.9));
-  sb.position.y = 1.8;
-  const sr = new THREE.Mesh(gableRoof(7.8, 6, 1.4), std(0x7a2c1e, 0.5, 0.4));
-  sr.position.y = 3.6;
-  shed.add(sb, sr);
-  shed.position.set(-58, BASIN_LEVEL, -14);
-  shed.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  group.add(house, shed);
 
-  // 屋敷林の杉
-  const cedarGeo = mergeGeos([
-    new THREE.ConeGeometry(2.2, 9, 8).translate(0, 9.5, 0),
-    new THREE.ConeGeometry(2.8, 7, 8).translate(0, 6.5, 0),
-    new THREE.CylinderGeometry(0.25, 0.35, 5, 6).translate(0, 2.5, 0),
-  ]);
-  const cedarMat = std(0x16241a, 0.95);
-  for (let i = 0; i < 14; i++) {
-    const m = new THREE.Mesh(cedarGeo, cedarMat);
-    const a = -0.6 + i * 0.12;
-    m.position.set(-75 - Math.sin(i * 1.7) * 4 - 3, BASIN_LEVEL, -20 + i * 3.4);
-    m.scale.setScalar(1.6 + 0.4 * Math.sin(i * 3.1) + a * 0);
-    m.castShadow = true;
-    group.add(m);
+  // ---- 白壁の納屋（妻入りの土蔵造り：白しっくい、黒い腰板、鉄板葺きの大屋根、庇つきの入口） ----
+  const kura = new THREE.Group();
+  {
+    const W = 9, L = 13, H = 5.2, RISE = 4.2;           // 間口・奥行・軒高・屋根の高さ
+    const white = toon({ map: rep(T.plaster, 2, 1) });
+    // 五角形の妻壁を押し出した本体
+    const shape = new THREE.Shape();
+    shape.moveTo(-W / 2, 0); shape.lineTo(W / 2, 0); shape.lineTo(W / 2, H); shape.lineTo(0, H + RISE); shape.lineTo(-W / 2, H); shape.lineTo(-W / 2, 0);
+    const bodyG = new THREE.ExtrudeGeometry(shape, { depth: L, bevelEnabled: false });
+    bodyG.translate(0, 0, -L / 2);
+    kura.add(new THREE.Mesh(bodyG, white));
+    // 黒い焼杉の腰板
+    const yaki = toon({ map: rep(boardTexture('#1f1c1a'), 6, 1) });
+    kura.add(box(W + 0.08, 1.9, L + 0.08, yaki, 0, 0.95, 0));
+    kura.add(box(W + 0.14, 0.16, L + 0.14, std('#2a2522'), 0, 1.92, 0));     // 水切り
+    // 屋根（両流れ、軒と妻側に深く張り出す）
+    const pitch = Math.atan2(RISE, W / 2), slope = Math.hypot(W / 2 + 1.1, (W / 2 + 1.1) * Math.tan(pitch));
+    const roofM = toon({ color: '#2b2a2c' });
+    for (const side of [-1, 1]) {
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(slope, 0.16, L + 1.8), roofM);
+      plate.position.set(side * (W / 4 + 0.5) * 1.02, H + RISE / 2 - 0.35, 0);
+      plate.rotation.z = -side * pitch;
+      kura.add(plate);
+    }
+    kura.add(box(0.5, 0.35, L + 1.9, roofM, 0, H + RISE + 0.12, 0));        // 棟
+    // 破風板（妻側の縁）
+    for (const zz of [L / 2 + 0.9, -L / 2 - 0.9]) for (const side of [-1, 1]) {
+      const bargeboard = new THREE.Mesh(new THREE.BoxGeometry(slope + 0.2, 0.42, 0.12), std('#1c1b1d'));
+      bargeboard.position.set(side * (W / 4 + 0.5) * 1.02, H + RISE / 2 - 0.5, zz);
+      bargeboard.rotation.z = -side * pitch;
+      kura.add(bargeboard);
+    }
+    const front = L / 2 + 0.02;
+    // 妻壁のこて絵のような斜めの線（白い盛り上がり）
+    for (let k = 0; k < 4; k++) for (const side of [-1, 1]) {
+      const ln = new THREE.Mesh(new THREE.BoxGeometry(W * 0.32 - k * 0.5, 0.07, 0.06), toon({ color: '#f7f4ec' }));
+      ln.position.set(side * (W * 0.2), H + 0.6 + k * 0.42, front + 0.02);
+      ln.rotation.z = side * pitch;
+      kura.add(ln);
+    }
+    // 屋号の家紋（四角に印）
+    kura.add(box(0.95, 0.95, 0.06, std('#f3f0e8'), 0, H + RISE * 0.55, front + 0.02));
+    kura.add(box(0.8, 0.8, 0.07, std('#1b1b1b'), 0, H + RISE * 0.55, front + 0.03));
+    kura.add(box(0.6, 0.1, 0.08, std('#f3f0e8'), 0, H + RISE * 0.55 + 0.12, front + 0.04));
+    kura.add(box(0.1, 0.45, 0.08, std('#f3f0e8'), 0, H + RISE * 0.55 - 0.08, front + 0.04));
+    // 窓（白い枠に木の格子）
+    kura.add(box(1.5, 1.6, 0.18, std('#f1ede4'), 0, H - 0.6, front + 0.05));
+    kura.add(box(1.0, 1.1, 0.2, toon({ map: rep(T.board, 1, 1) }), 0, H - 0.6, front + 0.06));
+    for (let k = -1; k <= 1; k++) kura.add(box(0.06, 1.1, 0.24, std('#3a2b20'), k * 0.28, H - 0.6, front + 0.07));
+    // 入口：白い柱と黒い板の庇、木の扉
+    kura.add(box(2.6, 2.6, 0.12, std('#2a2420'), 0, 1.3, front + 0.04));
+    for (const side of [-1, 1]) kura.add(box(0.36, 2.9, 0.36, std('#f1ede4'), side * 1.55, 1.45, front + 0.35));
+    const hisashi = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.14, 1.9), roofM);
+    hisashi.position.set(0, 3.15, front + 0.85); hisashi.rotation.x = 0.22;
+    kura.add(hisashi, box(4.6, 0.2, 0.1, std('#1c1b1d'), 0, 2.95, front + 1.8));
+    var kuraRoofMat = roofM;
   }
+  kura.position.set(-70, BASIN_LEVEL, 21);
+  kura.rotation.y = Math.PI * 0.5;   // 妻側（入口）を東の田んぼへ向ける
+  kura.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+
+  // ---- 小屋（古びた板張りの小さな作業小屋、柱で支えた下屋つき） ----
+  const shed = new THREE.Group();
+  {
+    const W = 3.6, L = 4.4, H = 2.4, RISE = 1.6;
+    const logs = boardTexture('#6e665b'); logs.rotation = Math.PI / 2; logs.center.set(0.5, 0.5);
+    const wallM = toon({ map: rep(logs, 1, 3) });
+    const shape = new THREE.Shape();
+    shape.moveTo(-W / 2, 0); shape.lineTo(W / 2, 0); shape.lineTo(W / 2, H); shape.lineTo(0, H + RISE); shape.lineTo(-W / 2, H); shape.lineTo(-W / 2, 0);
+    const g = new THREE.ExtrudeGeometry(shape, { depth: L, bevelEnabled: false });
+    g.translate(0, 0, -L / 2);
+    // 押し出し形状の UV を整える（壁面の板目が出るように）
+    const uv = g.attributes.uv, P = g.attributes.position;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, (P.getX(i) + P.getZ(i)) / 3, P.getY(i) / 2.4);
+    shed.add(new THREE.Mesh(g, wallM));
+    shed.add(box(W + 0.2, 0.3, L + 0.2, std('#4d4740'), 0, 0.12, 0));       // 土台
+    const pitch = Math.atan2(RISE, W / 2), slope = Math.hypot(W / 2 + 0.55, (W / 2 + 0.55) * Math.tan(pitch));
+    const roofT = boardTexture('#7b7468');
+    const roofM2 = toon({ map: rep(roofT, 3, 1) });
+    for (const side of [-1, 1]) {
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(slope, 0.1, L + 2.6), roofM2);
+      plate.position.set(side * (W / 4 + 0.25), H + RISE / 2 - 0.12, 0.9);
+      plate.rotation.z = -side * pitch;
+      shed.add(plate);
+    }
+    shed.add(box(0.22, 0.2, L + 2.6, std('#57514a'), 0, H + RISE + 0.02, 0.9));
+    // 下屋の柱と縁台、入口
+    for (const side of [-1, 1]) shed.add(box(0.14, H + 0.2, 0.14, std('#5d564d'), side * (W / 2 - 0.1), (H + 0.2) / 2, L / 2 + 1.7));
+    shed.add(box(W - 0.4, 0.12, 1.3, std('#6b6359'), 0, 0.45, L / 2 + 0.75));
+    shed.add(box(0.9, 1.8, 0.08, std('#2b2621'), 0.6, 1.4, L / 2 + 0.03));
+    var shedRoofMat = roofM2;
+  }
+  shed.position.set(-53, BASIN_LEVEL, -13);
+  shed.rotation.y = Math.PI * 0.5;
+  shed.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  // 丸太の柵（小屋のまわり）
+  const fence = new THREE.Group();
+  for (let i = 0; i < 9; i++) {
+    const post = box(0.1, 1.1, 0.1, std('#6a6258'), -47, BASIN_LEVEL + 0.55, -23 + i * 2.5);
+    fence.add(post);
+  }
+  for (const y of [0.45, 0.9]) fence.add(box(0.07, 0.07, 20, std('#6a6258'), -47, BASIN_LEVEL + y, -13));
+  group.add(house, shed, kura, fence);
+
+  // ---- 屋敷林の杉（家の北と西を囲む） ----
+  const cedarGeo = cedarGeometry(12, 1, 41);
+  const cedarMat = std('#2a4a2c');
+  const cedarSpots = [];
+  for (let i = 0; i < 16; i++) cedarSpots.push([-82 - (i % 2) * 4 - Math.sin(i * 1.7) * 1.5, -24 + i * 3.6]);   // 西側の列
+  for (let i = 0; i < 9; i++) cedarSpots.push([-78 + i * 4.2, -30 - (i % 2) * 3]);                              // 北側の列
+  const cedars = new THREE.InstancedMesh(cedarGeo, cedarMat, cedarSpots.length);
+  const co = new THREE.Object3D();
+  cedarSpots.forEach(([x, z], i) => {
+    const hgt = 10 + ((i * 37) % 11) * 0.5;
+    co.position.set(x, BASIN_LEVEL, z); co.rotation.set(0, i * 2.1, 0); co.scale.set(hgt * 0.9, hgt, hgt * 0.9);
+    co.updateMatrix(); cedars.setMatrixAt(i, co.matrix);
+    const v = 0.85 + ((i * 53) % 10) / 30;
+    cedars.setColorAt(i, new THREE.Color(v, v, v));
+  });
+  cedars.castShadow = true; cedars.receiveShadow = true;
+  group.add(cedars);
 
   // 一本桜（畦の角）
   const tree = new THREE.Group();
@@ -625,10 +780,63 @@ function buildVillage() {
     blossoms.visible = leafy > 0.05;
     blossoms.scale.setScalar(0.5 + 0.5 * leafy);
     const snow = snowCover(t);
-    roofM.color.set('#3b4250').lerp(hex('#eef3f8'), snow);
-    sr.material.color.set('#a8402c').lerp(hex('#eef3f8'), snow);
+    for (const m of houseRoofMats) m.color.set('#ffffff').lerp(hex('#f4f8ff').multiplyScalar(1.6), snow);
+    shedRoofMat.color.set('#ffffff').lerp(hex('#f4f8ff').multiplyScalar(1.6), snow);
+    kuraRoofMat.color.set('#2b2a2c').lerp(hex('#eef3f8'), snow);
+    cedarMat.color.set('#2a4a2c').lerp(hex('#5d5232'), (1 - f.green) * 0.45).lerp(hex('#c9d2da'), snow * 0.35);
   }
   return { group, updateSeason };
+}
+
+// 寄棟屋根（UV付き：u は軒に沿って、v は斜面に沿って）
+function hipRoofUV(w, d, h) {
+  const hw = w / 2, hd = d / 2, r = (w - d) / 2;
+  const A = [-hw, 0, -hd], B = [hw, 0, -hd], C = [hw, 0, hd], D = [-hw, 0, hd], E = [-r, h, 0], F = [r, h, 0];
+  const pos = [], uv = [];
+  const tri = (p, q, s2, tp, tq, ts) => { pos.push(...p, ...q, ...s2); uv.push(...tp, ...tq, ...ts); };
+  const L = h; // v の長さ目安
+  // 南面 (D,C,F,E) と北面 (B,A,E,F)
+  tri(D, C, F, [0, 0], [w / 4, 0], [(r + hw) / 4, 1]); tri(D, F, E, [0, 0], [(r + hw) / 4, 1], [(hw - r) / 4, 1]);
+  tri(B, A, E, [0, 0], [w / 4, 0], [(r + hw) / 4, 1]); tri(B, E, F, [0, 0], [(r + hw) / 4, 1], [(hw - r) / 4, 1]);
+  // 東面 (C,B,F) と西面 (A,D,E)
+  tri(C, B, F, [0, 0], [d / 4, 0], [d / 8, 1]);
+  tri(A, D, E, [0, 0], [d / 4, 0], [d / 8, 1]);
+  void L;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.computeVertexNormals();
+  return g;
+}
+// 屋根の厚み（軒先の切り口）
+function roofRim(w, d, th) {
+  const hw = w / 2, hd = d / 2, pos = [], uv = [];
+  const quad = (a, b, len) => {
+    const a2 = [a[0], th, a[2]], b2 = [b[0], th, b[2]];
+    pos.push(...a, ...b, ...b2, ...a, ...b2, ...a2); uv.push(0, 0, len / 4, 0, len / 4, 1, 0, 0, len / 4, 1, 0, 1);
+  };
+  quad([-hw, 0, hd], [hw, 0, hd], w); quad([hw, 0, -hd], [-hw, 0, -hd], w);
+  quad([hw, 0, hd], [hw, 0, -hd], d); quad([-hw, 0, -hd], [-hw, 0, hd], d);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.computeVertexNormals();
+  return g;
+}
+// 切妻屋根（UV付き、長さ w・奥行 d・高さ h、棟は x 方向）
+function gableRoofUV(w, d, h) {
+  const hw = w / 2, hd = d / 2, pos = [], uv = [];
+  const quad = (p0, p1, p2, p3) => { pos.push(...p0, ...p1, ...p2, ...p0, ...p2, ...p3); uv.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1); };
+  quad([-hw, 0, hd], [hw, 0, hd], [hw, h, 0], [-hw, h, 0]);
+  quad([hw, 0, -hd], [-hw, 0, -hd], [-hw, h, 0], [hw, h, 0]);
+  // 妻面（三角）
+  pos.push(-hw + 0.3, 0, hd - 0.3, -hw + 0.3, h - 0.1, 0, -hw + 0.3, 0, -hd + 0.3); uv.push(0, 0, 0.5, 1, 1, 0);
+  pos.push(hw - 0.3, 0, -hd + 0.3, hw - 0.3, h - 0.1, 0, hw - 0.3, 0, hd - 0.3); uv.push(0, 0, 0.5, 1, 1, 0);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.computeVertexNormals();
+  return g;
 }
 
 function hipRoof(w, d, h) {
@@ -750,7 +958,7 @@ function buildRailway() {
     train.position.x = x;
     if (Math.abs(x) > LEN / 2 + 30) { running = false; train.visible = false; wait = 25 + Math.random() * 50; }
   }
-  return { group, update, get running() { return running; }, place(px) { running = true; dir = 1; x = px; train.position.x = px; train.visible = true; } };
+  return { group, update, get running() { return running; }, get x() { return x; }, get z() { return RAIL_Z; }, SPEED, place(px) { running = true; dir = 1; x = px; train.position.x = px; train.visible = true; } };
 }
 
 // ---------- 入道雲（ビルボード） ----------

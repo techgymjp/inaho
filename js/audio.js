@@ -4,7 +4,7 @@ import { smooth, doyOf } from './calendar.js';
 export function createAudio() {
   let ctx = null, master, enabled = false;
   let wind, windGain, rainGain, cicadaGain, cicadaLfo;
-  let nextFrog = 0, nextCricket = 0, nextBird = 0, nextUguisu = 0;
+  let nextFrog = 0, nextCricket = 0, nextBird = 0, nextUguisu = 0, nextMinmin = 0, nextHigu = 0;
 
   function noiseBuffer(sec = 2, brown = false) {
     const b = ctx.createBuffer(1, ctx.sampleRate * sec, ctx.sampleRate);
@@ -36,9 +36,9 @@ export function createAudio() {
     rn.connect(rf).connect(rainGain).connect(master);
     // 蝉（ミンミン系のうなり）
     const cn = loop(white);
-    const cf = ctx.createBiquadFilter(); cf.type = 'bandpass'; cf.frequency.value = 4800; cf.Q.value = 6;
+    const cf = ctx.createBiquadFilter(); cf.type = 'bandpass'; cf.frequency.value = 5200; cf.Q.value = 3;
     const am = ctx.createGain(); am.gain.value = 0.5;
-    cicadaLfo = ctx.createOscillator(); cicadaLfo.frequency.value = 7; cicadaLfo.start();
+    cicadaLfo = ctx.createOscillator(); cicadaLfo.frequency.value = 23; cicadaLfo.start();
     const lfoG = ctx.createGain(); lfoG.gain.value = 0.5; cicadaLfo.connect(lfoG).connect(am.gain);
     cicadaGain = ctx.createGain(); cicadaGain.gain.value = 0;
     cn.connect(cf).connect(am).connect(cicadaGain).connect(master);
@@ -60,12 +60,6 @@ export function createAudio() {
       o.connect(f).connect(g).connect(master); o.start(ts); o.stop(ts + 0.12);
     }
   }
-  function cricket(t0) {
-    const o = ctx.createOscillator(); o.frequency.value = 4200 + Math.random() * 400;
-    const g = ctx.createGain();
-    for (let k = 0; k < 3; k++) env(g, t0 + k * 0.05, 0.005, 0.03, 0.03);
-    o.connect(g).connect(master); o.start(t0); o.stop(t0 + 0.2);
-  }
   function bird(t0) {
     const o = ctx.createOscillator(); const g = ctx.createGain();
     const f0 = 2800 + Math.random() * 1800;
@@ -74,16 +68,78 @@ export function createAudio() {
     env(g, t0, 0.01, 0.15, 0.04);
     o.connect(g).connect(master); o.start(t0); o.stop(t0 + 0.2);
   }
+  // 鈴虫「リーン、リーン」：澄んだ高音を細かく震わせる
+  function suzumushi(t0) {
+    const f = 4300 + Math.random() * 300;
+    for (let k = 0; k < 2; k++) {
+      const ts = t0 + k * 0.55;
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+      const trem = ctx.createOscillator(); trem.frequency.value = 38;
+      const tg = ctx.createGain(); tg.gain.value = 0.5; trem.connect(tg);
+      const am = ctx.createGain(); am.gain.value = 0.5; tg.connect(am.gain);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, ts); g.gain.exponentialRampToValueAtTime(0.035, ts + 0.04);
+      g.gain.setValueAtTime(0.035, ts + 0.32); g.gain.exponentialRampToValueAtTime(0.0001, ts + 0.42);
+      o.connect(am).connect(g).connect(master);
+      o.start(ts); trem.start(ts); o.stop(ts + 0.45); trem.stop(ts + 0.45);
+    }
+  }
+  // ミンミンゼミ「ミーン ミンミンミンミン ミー…」
+  function minmin(t0) {
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 3600; bp.Q.value = 4;
+    const g = ctx.createGain(); g.gain.value = 0.0001;
+    o.connect(bp).connect(g).connect(master);
+    let t = t0;
+    const syl = (dur, f0, f1, v) => {
+      o.frequency.setValueAtTime(f0, t); o.frequency.linearRampToValueAtTime(f1, t + dur);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + dur * 0.25);
+      g.gain.setValueAtTime(v, t + dur * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      t += dur;
+    };
+    syl(0.9, 1500, 1750, 0.05);
+    for (let i = 0; i < 6; i++) syl(0.24, 1700, 1500, 0.06);
+    syl(0.8, 1650, 1450, 0.045);
+    o.start(t0); o.stop(t + 0.05);
+    return t - t0;
+  }
+  // ヒグラシ「カナカナカナ…」（夕方・明け方）
+  function higurashi(t0) {
+    const o = ctx.createOscillator(); o.type = 'triangle';
+    const g = ctx.createGain(); g.gain.value = 0.0001;
+    o.connect(g).connect(master);
+    const n = 14;
+    for (let i = 0; i < n; i++) {
+      const ts = t0 + i * 0.13, v = 0.04 * (1 - i / n * 0.6);
+      o.frequency.setValueAtTime(4800 - i * 40, ts); o.frequency.exponentialRampToValueAtTime(3900 - i * 40, ts + 0.1);
+      g.gain.setValueAtTime(0.0001, ts); g.gain.exponentialRampToValueAtTime(v, ts + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ts + 0.11);
+    }
+    o.start(t0); o.stop(t0 + n * 0.13 + 0.1);
+  }
+  // ウグイス「ホーーー ホケキョ」
   function uguisu(t0) {
-    // ホー…ホケキョ
-    const o = ctx.createOscillator(); const g = ctx.createGain();
-    o.frequency.setValueAtTime(1200, t0); o.frequency.linearRampToValueAtTime(1350, t0 + 0.9);
-    o.frequency.setValueAtTime(2200, t0 + 1.05); o.frequency.linearRampToValueAtTime(2700, t0 + 1.2);
-    o.frequency.setValueAtTime(1900, t0 + 1.3); o.frequency.linearRampToValueAtTime(2300, t0 + 1.55);
-    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.05, t0 + 0.2);
-    g.gain.setValueAtTime(0.05, t0 + 0.9); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.0);
-    g.gain.exponentialRampToValueAtTime(0.06, t0 + 1.08); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.62);
-    o.connect(g).connect(master); o.start(t0); o.stop(t0 + 1.7);
+    const o = ctx.createOscillator(); o.type = 'sine';
+    const o2 = ctx.createOscillator(); o2.type = 'sine'; // 倍音
+    const g = ctx.createGain(), g2 = ctx.createGain(); g2.gain.value = 0.15;
+    o.connect(g); o2.connect(g2).connect(g); g.connect(master);
+    const F = (t, f) => { o.frequency.setValueAtTime(f, t); o2.frequency.setValueAtTime(f * 2, t); };
+    const R = (t, f) => { o.frequency.linearRampToValueAtTime(f, t); o2.frequency.linearRampToValueAtTime(f * 2, t); };
+    // ホーー：低めの長い音がゆっくり上がる
+    F(t0, 1150); R(t0 + 1.4, 1320);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.07, t0 + 0.3);
+    g.gain.setValueAtTime(0.07, t0 + 1.25); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.45);
+    // ホケ：短く高い二音
+    const h = t0 + 1.62;
+    F(h, 2350); R(h + 0.09, 2200);
+    g.gain.setValueAtTime(0.0001, h); g.gain.exponentialRampToValueAtTime(0.08, h + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, h + 0.1);
+    F(h + 0.13, 2600); R(h + 0.2, 2450);
+    g.gain.setValueAtTime(0.0001, h + 0.13); g.gain.exponentialRampToValueAtTime(0.08, h + 0.15); g.gain.exponentialRampToValueAtTime(0.0001, h + 0.21);
+    // キョ：鋭く跳ね上がって下がる
+    const k = h + 0.27;
+    F(k, 2000); R(k + 0.08, 3300); R(k + 0.3, 2700);
+    g.gain.setValueAtTime(0.0001, k); g.gain.exponentialRampToValueAtTime(0.09, k + 0.04);
+    g.gain.setValueAtTime(0.09, k + 0.22); g.gain.exponentialRampToValueAtTime(0.0001, k + 0.36);
+    o.start(t0); o2.start(t0); o.stop(k + 0.4); o2.stop(k + 0.4);
   }
 
   function swish(strength = 1) {
@@ -104,6 +160,82 @@ export function createAudio() {
     });
   }
 
+  // ---- 夕方のチャイム：ドヴォルザーク「新世界より」第2楽章（家路）の冒頭ワンフレーズ ----
+  // 防災行政無線のスピーカーから遠くに響く、鉄琴のような音色
+  let echoIn = null;
+  function echoBus() {
+    if (echoIn) return echoIn;
+    echoIn = ctx.createGain();
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600;
+    const dl = ctx.createDelay(1.5); dl.delayTime.value = 0.32;
+    const fb = ctx.createGain(); fb.gain.value = 0.38;
+    echoIn.connect(lp); lp.connect(master); lp.connect(dl); dl.connect(fb); fb.connect(dl); dl.connect(master);
+    return echoIn;
+  }
+  function chimeNote(t0, freq, dur, vol) {
+    for (const [mul, amp] of [[1, 1], [2, 0.35], [3.01, 0.12], [4.2, 0.06]]) {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = freq * mul;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(vol * amp, t0 + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + Math.max(0.6, dur * 1.6) / (mul > 1 ? mul * 0.7 : 1));
+      o.connect(g).connect(echoBus()); o.start(t0); o.stop(t0 + dur * 1.8 + 0.2);
+    }
+  }
+  function yuyake() {
+    if (!enabled) return;
+    // 「ミ ソソ ミ レド レミソミ レ」（ハ長調に移調）
+    const E4 = 329.63, G4 = 392.0, D4 = 293.66, C4 = 261.63;
+    const beat = 0.62;
+    const tune = [[E4, 0.75], [G4, 0.25], [G4, 2], [E4, 0.75], [D4, 0.25], [C4, 2], [D4, 1], [E4, 1], [G4, 1], [E4, 1], [D4, 3]];
+    let t0 = ctx.currentTime + 0.1;
+    for (const [f, b] of tune) { chimeNote(t0, f, b * beat, 0.09); t0 += b * beat; }
+  }
+
+  // ---- 電車の走行音（カタンコトン） ----
+  let railGain = null, railPan = null, rumble = null;
+  function railBus() {
+    if (railGain) return;
+    railPan = ctx.createStereoPanner();
+    railGain = ctx.createGain(); railGain.gain.value = 0;
+    railGain.connect(railPan).connect(master);
+    // 低いうなり（エンジンと車輪）
+    rumble = loop(noiseBuffer(3, true));
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 220;
+    const rg = ctx.createGain(); rg.gain.value = 0.5;
+    rumble.connect(lp).connect(rg).connect(railGain);
+  }
+  function clack(t0, strong) {
+    const s = ctx.createBufferSource(); s.buffer = clackBuf || (clackBuf = noiseBuffer(0.08));
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = strong ? 900 : 1300; bp.Q.value = 2.5;
+    const g = ctx.createGain(); env(g, t0, 0.003, 0.07, strong ? 0.9 : 0.6);
+    s.connect(bp).connect(g).connect(railGain); s.start(t0); s.stop(t0 + 0.1);
+    const o = ctx.createOscillator(); o.frequency.value = 95; // ゴトッという低音
+    const og = ctx.createGain(); env(og, t0, 0.004, 0.09, strong ? 0.5 : 0.3);
+    o.connect(og).connect(railGain); o.start(t0); o.stop(t0 + 0.12);
+  }
+  let clackBuf = null, lastJoint = null;
+  // x: 列車の中心位置, dist: カメラからの距離, pan: -1..1, running: 走行中か, speed: m/s, dir: 進行方向
+  function train(x, dist, pan, running, speed) {
+    if (!enabled) return;
+    railBus();
+    const now = ctx.currentTime;
+    const vol = running ? Math.min(1, 60 / Math.max(dist, 30)) * 0.55 : 0;
+    railGain.gain.setTargetAtTime(vol, now, 0.3);
+    railPan.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), now, 0.2);
+    if (!running) { lastJoint = null; return; }
+    // レールの継ぎ目（25mごと）を車輪が越えるたびに「カタン、コトン」
+    const joint = Math.floor(x / 25);
+    if (lastJoint !== null && joint !== lastJoint) {
+      const ax = 2.1 / speed, bog = 13.8 / speed, car = 20.8 / speed;
+      for (const c of [0, car]) {
+        clack(now + c, true); clack(now + c + ax, false);           // カタン
+        clack(now + c + bog, true); clack(now + c + bog + ax, false); // コトン
+      }
+    }
+    lastJoint = joint;
+  }
+
   function update(t, hour, wx, light) {
     if (!enabled) return;
     const now = ctx.currentTime;
@@ -111,20 +243,25 @@ export function createAudio() {
     windGain.gain.setTargetAtTime(0.05 + wx.wind * 0.25, now, 0.5);
     rainGain.gain.setTargetAtTime(wx.kind === 'rain' ? wx.precip * 0.22 : 0, now, 0.5);
     const cicada = smooth(doyOf(7, 18), doyOf(7, 28), t) * (1 - smooth(doyOf(8, 25), doyOf(9, 5), t)) * day * (wx.kind === 'rain' ? 0 : 1);
-    cicadaGain.gain.setTargetAtTime(cicada * 0.05, now, 0.5);
+    // アブラゼミの「ジー」は背景に、ミンミンゼミは時々はっきり鳴く
+    cicadaGain.gain.setTargetAtTime(cicada * 0.03, now, 0.5);
+    if (cicada > 0.3 && hour > 8 && hour < 17 && now > nextMinmin) nextMinmin = now + minmin(now) + 2 + Math.random() * 5;
+    const higu = smooth(doyOf(7, 15), doyOf(7, 25), t) * (1 - smooth(doyOf(9, 1), doyOf(9, 15), t)) * (wx.kind === 'rain' ? 0 : 1);
+    const dusk = (hour > 16.5 && hour < 19.2) || (hour > 3.8 && hour < 5.5);
+    if (higu > 0.3 && dusk && now > nextHigu) { higurashi(now); nextHigu = now + 2.5 + Math.random() * 3; }
     // 蛙：5〜7月の夜（田んぼに水があるとき）
     const frogs = smooth(doyOf(5, 1), doyOf(5, 15), t) * (1 - smooth(doyOf(7, 25), doyOf(8, 10), t)) * (1 - day);
     if (frogs > 0.05 && now > nextFrog) { frog(now, 380 + Math.random() * 300); nextFrog = now + (0.1 + Math.random() * 0.5) / frogs; }
     const crickets = smooth(doyOf(8, 25), doyOf(9, 5), t) * (1 - smooth(doyOf(10, 20), doyOf(11, 5), t)) * (1 - day);
-    if (crickets > 0.05 && now > nextCricket) { cricket(now); nextCricket = now + (0.2 + Math.random() * 0.4) / crickets; }
+    if (crickets > 0.05 && now > nextCricket) { suzumushi(now); nextCricket = now + (1.3 + Math.random() * 0.8) / crickets; }
     const birds = (1 - smooth(doyOf(11, 20), doyOf(12, 1), t)) * smooth(doyOf(3, 1), doyOf(3, 20), t) * day * (hour < 10 ? 1 : 0.3);
     if (birds > 0.05 && now > nextBird && wx.kind !== 'rain') { bird(now); nextBird = now + (1 + Math.random() * 4) / birds; }
     const ug = smooth(doyOf(3, 20), doyOf(4, 5), t) * (1 - smooth(doyOf(7, 1), doyOf(7, 20), t)) * day;
-    if (ug > 0.3 && now > nextUguisu && wx.kind !== 'rain') { uguisu(now); nextUguisu = now + 8 + Math.random() * 14; }
+    if (ug > 0.3 && now > nextUguisu && wx.kind !== 'rain' && hour > 5 && hour < 17) { uguisu(now); nextUguisu = now + 5 + Math.random() * 7; }
   }
 
   return {
-    init, update, swish, chime,
+    init, update, swish, chime, yuyake, train,
     get enabled() { return enabled; },
     toggle() {
       if (!ctx) { init(); return true; }

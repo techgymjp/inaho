@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import { createLandscape } from './landscape.js';
 import { createField, FIELD_W, FIELD_D, TOTAL, KG_PER_HILL } from './field.js';
 import { createEffects } from './effects.js';
+import { createFlowers } from './flowers.js';
 import { createAudio } from './audio.js';
+import { LANG, setLang, t as tr, msg, stageText, sekkiText, fmtDate, fmtMonthDay, applyStatic } from './i18n.js';
 import {
   dateLabel, monthDay, sekki, stageOf, sunPosition, moonPosition, weatherOf, WEATHER_LABEL, doyOf,
   HARVEST_START, HARVEST_END, harvestQuality, grade, smooth, clamp, PLANT_START,
@@ -11,8 +13,8 @@ import {
 // ---------- 画質 ----------
 const isMobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad/.test(navigator.userAgent);
 const QUALITY = {
-  high: { name: '高', shadow: 2048, reflect: 1024, blades: 10, bladeSegs: 3, ears: 4, earSegs: 5, trees: 26000, terrainSeg: 320, grass: 7000, pr: Math.min(devicePixelRatio, 2) },
-  low: { name: '軽量', shadow: 1024, reflect: 384, blades: 5, bladeSegs: 2, ears: 3, earSegs: 3, trees: 11000, terrainSeg: 200, grass: 2500, pr: Math.min(devicePixelRatio, 1.25) },
+  high: { name: tr('quality.high'), shadow: 2048, reflect: 1024, blades: 10, bladeSegs: 3, ears: 4, earSegs: 5, trees: 26000, terrainSeg: 320, grass: 7000, pr: Math.min(devicePixelRatio, 2) },
+  low: { name: tr('quality.low'), shadow: 1024, reflect: 384, blades: 5, bladeSegs: 2, ears: 3, earSegs: 3, trees: 11000, terrainSeg: 200, grass: 2500, pr: Math.min(devicePixelRatio, 1.25) },
 };
 const qKey = localStorage.getItem('suiden365.quality') || (isMobile ? 'low' : 'high');
 const Q = QUALITY[qKey] || QUALITY.high;
@@ -32,6 +34,7 @@ const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.15, 6
 const land = createLandscape(scene, renderer, Q);
 const field = createField(scene, Q);
 const fx = createEffects(scene);
+const flowers = createFlowers(scene);
 const audio = createAudio();
 
 // ---------- 状態 ----------
@@ -63,12 +66,13 @@ const cam = {
   tPos: new THREE.Vector3(), tYaw: 0, tPitch: 0, dragYaw: 0, dragPitch: 0, fov: 55, tFov: 55,
 };
 const VIEWS = {
-  aze: { label: '畦道', pos: [7.5, 1.6, 27.9], yaw: 0.06, pitch: 0.03, fov: 24 }, // 望遠
+  aze: { label: '畦道', pos: [7.5, 3.0, 36.5], yaw: 0.06, pitch: -0.005, fov: 24 }, // 農道の奥の土手から望遠で
   drone: { label: '空から', orbit: true },
   yama: { label: '里山', pos: [-190, 62, 175], look: [0, 0, 0] },
+  kominka: { label: '古民家', pos: [-14, 2.6, 7], look: [-62, 4.5, 4], fov: 40 },
   north: { label: '水路', pos: [-14, 1.4, -28.2], yaw: Math.PI * 0.82, pitch: -0.04 },
 };
-const VIEW_ORDER = ['aze', 'drone', 'yama', 'north'];
+const VIEW_ORDER = ['aze', 'kominka', 'drone', 'yama', 'north'];
 function lookFrom(p, target) {
   const dx = target[0] - p[0], dy = target[1] - p[1], dz = target[2] - p[2];
   return { yaw: Math.atan2(dx, -dz), pitch: Math.atan2(dy, Math.hypot(dx, dz)) };
@@ -98,11 +102,17 @@ function viewTarget(dt) {
 function setView(name, instant = false) {
   state.view = name;
   cam.dragYaw = 0; cam.dragPitch = 0;
-  document.getElementById('btnView').textContent = '視点：' + VIEWS[name].label;
+  document.getElementById('btnView').textContent = msg.view(tr('view.' + name));
   viewTarget(0);
   if (instant) { cam.pos.copy(cam.tPos); cam.yaw = cam.tYaw; cam.pitch = cam.tPitch; cam.fov = cam.tFov; camera.fov = cam.fov; camera.updateProjectionMatrix(); }
 }
+let idleT = 0;
 function updateCamera(dt) {
+  // 見回したあと、しばらく触らなければ元のアングルにゆっくり戻る
+  if (!pointer) {
+    idleT += dt;
+    if (idleT > 4) { const d = Math.exp(-dt * 0.8); cam.dragYaw *= d; cam.dragPitch *= d; }
+  } else idleT = 0;
   viewTarget(dt);
   const k = 1 - Math.exp(-dt * 2.2);
   cam.pos.lerp(cam.tPos, k);
@@ -157,18 +167,18 @@ function toast(html, sec = 6) {
 function setSpeed(s) {
   state.speed = s;
   ui.speed.textContent = '×' + s;
-  ui.speed.title = s === 1 ? '1日＝1分' : `1日＝${(60 / s).toFixed(s >= 600 ? 1 : 0)}秒`;
+  ui.speed.title = msg.speedTitle(s);
 }
 function updateHUD(tg) {
   const d = Math.floor(state.t) % 365;
   const hour = (state.t - Math.floor(state.t)) * 24;
   const hh = Math.floor(hour), mm = Math.floor((hour - hh) * 60 / 10) * 10;
-  ui.year.textContent = `${state.year}年目 ・ ${d + 1}日目`;
-  ui.date.textContent = dateLabel(d, state.calYear || 2026);
+  ui.year.textContent = msg.yearDay(state.year, d + 1);
+  { const md = monthDay(d); ui.date.textContent = fmtDate(md.month, md.day, new Date(state.calYear || 2026, md.month - 1, md.day).getDay()); }
   ui.time.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-  ui.sub.textContent = `${sekki(d)} ・ ${WEATHER_LABEL[tg.kind]}`;
+  ui.sub.textContent = `${sekkiText(sekki(d))} ・ ${tr('wx.' + tg.kind)}`;
   ui.bar.style.width = ((state.t % 365) / 365 * 100).toFixed(2) + '%';
-  const st = stageOf(d);
+  const st = stageText(stageOf(d));
   if (st.name !== state.lastStage) {
     const first = state.lastStage === '';
     state.lastStage = st.name;
@@ -183,9 +193,9 @@ function updateHUD(tg) {
   const pct = n / TOTAL * 100;
   ui.hPct.textContent = pct.toFixed(0) + '%';
   ui.hFill.style.width = pct + '%';
-  ui.hKg.textContent = `${Math.round(state.harvestKg).toLocaleString()} kg（${(state.harvestKg / 60).toFixed(1)}俵）`;
+  ui.hKg.textContent = msg.kg(state.harvestKg);
   const q = harvestQuality(state.t);
-  ui.hGrade.textContent = inHarvest ? `いま刈ると：${grade(q)}` : '';
+  ui.hGrade.textContent = inHarvest ? msg.gradeNow(grade(q)) : '';
   document.body.classList.toggle('harvest-season', inHarvest);
 }
 
@@ -241,7 +251,8 @@ canvas.addEventListener('pointermove', (e) => {
   } else {
     const dx = e.clientX - pointer.x, dy = e.clientY - pointer.y;
     const k = cam.fov / 55; // 望遠ほどゆっくり回す
-    cam.dragYaw -= dx * 0.004 * k; cam.dragPitch = clamp(cam.dragPitch + dy * 0.003 * k, -0.7, 0.7);
+    cam.dragYaw -= dx * 0.004 * k; const tele = !!VIEWS[state.view].fov; // 望遠では足元をのぞき込みすぎないように
+    cam.dragPitch = clamp(cam.dragPitch + dy * 0.003 * k, tele ? -0.1 : -0.7, tele ? 0.3 : 0.7);
     cam.yaw -= dx * 0.004 * k; cam.pitch += dy * 0.003 * k; // すぐ反応させる
   }
   pointer.x = e.clientX; pointer.y = e.clientY;
@@ -284,14 +295,7 @@ function finalizeHarvest(late) {
 }
 function showResult(rec, lost) {
   const bowls = Math.round(rec.kg * 0.9 * 1000 / 65); // 精米歩留まり90%、ごはん1杯=精米65g
-  $('resultBody').innerHTML = `
-    <div class="big">${rec.kg.toLocaleString()}<small> kg</small></div>
-    <div class="row"><span>俵（60kg）</span><b>${(rec.kg / 60).toFixed(1)} 俵</b></div>
-    <div class="row"><span>等級</span><b>${rec.grade}</b></div>
-    <div class="row"><span>刈り取り率</span><b>${rec.rate}%</b></div>
-    <div class="row"><span>ごはん換算</span><b>約 ${bowls.toLocaleString()} 杯</b></div>
-    ${lost ? `<p class="warn">刈り遅れた稲 ${Math.round(lost / TOTAL * 100)}% は倒れてしまいました。</p>` : ''}
-    <p class="note">刈った稲は「はざ掛け」で天日に干されます。</p>`;
+  $('resultBody').innerHTML = msg.result(rec, bowls, lost ? Math.round(lost / TOTAL * 100) : 0);
   $('result').classList.add('show');
 }
 
@@ -308,7 +312,7 @@ function newYear() {
   field.resetYear(); field.countCutCached = 0;
   field.update(state.t, true);
   const last = state.records[state.records.length - 1];
-  toast(`<b>${state.year}年目の春を迎えます</b><br>${last ? `昨年の収穫：${last.kg.toLocaleString()}kg（${last.grade}）` : '新しい一年のはじまり'}`, 8);
+  toast(msg.newYear(state.year, last), 8);
 }
 
 function frame(now) {
@@ -325,7 +329,7 @@ function frame(now) {
       if (state.speed > 1) setSpeed(1);
       if (!state.harvestPrompted) {
         state.harvestPrompted = true;
-        toast('<b>稲刈りの季節です！</b><br>田んぼの稲を指でなぞって（スワイプして）刈り取りましょう。<br>9月28日〜10月8日に刈ると一等米に。', 9);
+        toast(msg.harvestStart(), 9);
       }
     }
     if (state.t >= HARVEST_END && state.t < 365 && !state.finalized) finalizeHarvest(true);
@@ -340,6 +344,7 @@ function frame(now) {
   if (day !== lastSeasonDay && seasonTimer <= 0) {
     lastSeasonDay = day; seasonTimer = 0.35;
     land.updateSeason(t);
+    flowers.update(t % 365);
   }
   const q = Math.floor(t * 8);
   if (q !== lastLayoutQ) { lastLayoutQ = q; field.update(t); }
@@ -355,6 +360,20 @@ function frame(now) {
   const wind = wx.wind * (0.8 + 0.4 * Math.sin(time * 0.13));
   field.tick(time, wind, windDir, light.sunDir, camera);
   land.railway.update(dt, (t % 1) * 24, light.day);
+  {
+    // 電車の音：カメラからの距離と左右の位置
+    const rw = land.railway, dx = rw.x - camera.position.x, dz = rw.z - camera.position.z;
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+    const len = Math.hypot(dx, dz) || 1;
+    audio.train(rw.x, len, (dx * right.x + dz * right.z) / len, rw.running && !state.paused, rw.SPEED);
+  }
+  // 夕方のチャイム（4〜9月は18時、それ以外は17時）。早送りが速いときは鳴らさない
+  if (state.started && !state.paused && state.speed <= 10) {
+    const { month } = monthDay(Math.floor(t) % 365);
+    const ch = (month >= 4 && month <= 9 ? 18 : 17) / 24;
+    const prev = t - gdt;
+    if (Math.floor(prev) === Math.floor(t) && (prev % 1) < ch && (t % 1) >= ch) audio.yuyake();
+  }
   fx.update(dt, time, t % 365, wx, light, camera, windDir);
   audio.update(t % 365, (t % 1) * 24, wx, light);
 
@@ -397,15 +416,15 @@ function startGame(opt) {
   field.countCutCached = field.countCut();
   updateWeather(0, true);
   field.update(state.t, true);
-  land.updateSeason(state.t);
+  land.updateSeason(state.t); flowers.update(state.t % 365);
   state.started = true;
   state.lastStage = '';
   $('start').classList.remove('show');
   document.body.classList.remove('title');
   audio.init();
-  ui.sound.textContent = '音：オン';
+  ui.sound.textContent = tr('sound.on');
   updateHUD(weatherTarget(state.t));
-  toast(`<b>${stageOf(Math.floor(state.t) % 365).name}</b><br>${stageOf(Math.floor(state.t) % 365).note}`, 7);
+  { const st = stageText(stageOf(Math.floor(state.t) % 365)); toast(`<b>${st.name}</b><br>${st.note}`, 7); }
   save();
 }
 
@@ -413,7 +432,7 @@ function startGame(opt) {
 $('btnPause').onclick = () => { state.paused = !state.paused; ui.pause.textContent = state.paused ? '▶' : '❚❚'; };
 $('btnSpeed').onclick = () => {
   if (field.isHarvestable(state.t) && !state.finalized && state.speed === 1) {
-    if (!confirm('稲刈りの期間中です。早送りすると刈り取りの時間が減ります。早送りしますか？')) return;
+    if (!confirm(msg.confirmFast())) return;
   }
   setSpeed(SPEEDS[(SPEEDS.indexOf(state.speed) + 1) % SPEEDS.length]);
 };
@@ -422,26 +441,31 @@ $('btnView').onclick = () => {
   const i = order.indexOf(state.view);
   setView(order[(i + 1) % order.length]);
 };
-$('btnSound').onclick = () => { const on = audio.toggle(); ui.sound.textContent = on ? '音：オン' : '音：オフ'; };
+$('btnSound').onclick = () => { const on = audio.toggle(); ui.sound.textContent = tr(on ? 'sound.on' : 'sound.off'); };
 $('btnMenu').onclick = () => { renderRecords(); $('menu').classList.add('show'); };
 $('btnCloseMenu').onclick = () => $('menu').classList.remove('show');
 $('btnCloseResult').onclick = () => $('result').classList.remove('show');
-$('btnQuality').textContent = `画質：${Q.name}（切替）`;
+$('btnQuality').textContent = msg.quality(Q.name);
+$('btnLang').textContent = tr('menu.lang');
+$('btnLang').onclick = () => { save(); setLang(LANG === 'ja' ? 'en' : 'ja'); };
 $('btnQuality').onclick = () => { save(); localStorage.setItem('suiden365.quality', qKey === 'high' ? 'low' : 'high'); location.reload(); };
 $('btnReset').onclick = () => {
-  if (!confirm('記録を消して最初からやり直しますか？')) return;
+  if (!confirm(msg.confirmReset())) return;
   localStorage.removeItem(SAVE_KEY); location.reload();
 };
 function renderRecords() {
   $('records').innerHTML = state.records.length
-    ? state.records.map(r => `<tr><td>${r.year}年目</td><td>${r.kg.toLocaleString()}kg</td><td>${(r.kg / 60).toFixed(1)}俵</td><td>${r.grade}</td></tr>`).join('')
-    : '<tr><td colspan="4">まだ収穫の記録はありません</td></tr>';
+    ? state.records.map(msg.recordRow).join('')
+    : `<tr><td colspan="4">${msg.noRecords()}</td></tr>`;
 }
 document.querySelectorAll('[data-start]').forEach(b => (b.onclick = () => startGame(b.dataset.start)));
 if (load()) $('btnContinue').hidden = false;
 {
   const now = new Date();
-  $('todayLabel').textContent = `${now.getMonth() + 1}月${now.getDate()}日`;
+  $('todayLabel').textContent = fmtMonthDay(now.getMonth() + 1, now.getDate());
+  $('lblSpring').textContent = fmtMonthDay(4, 20); $('lblHarvest').textContent = fmtMonthDay(9, 19); $('lblJan').textContent = fmtMonthDay(1, 1);
+  applyStatic();
+  $('btnPause').title = tr('btn.pause');
 }
 addEventListener('keydown', (e) => {
   if (e.key === ' ') $('btnPause').click();
@@ -466,11 +490,11 @@ setView('aze', true);
 setSpeed(1);
 updateWeather(0, true);
 field.update(state.t, true);
-land.updateSeason(state.t);
+land.updateSeason(state.t); flowers.update(state.t % 365);
 state.t = doyOf(5, 19) + 16.9 / 24; // 水鏡の夕方
 if (!MANUAL) requestAnimationFrame(frame);
 window.__suiden = {
   state, field, setView, setSpeed, startGame, wx, land, scene, camera, renderer,
   step(n = 1, dtMs = 1000 / 30) { for (let i = 0; i < n; i++) frame(lastT + dtMs); },
-  refresh() { land.updateSeason(state.t); field.update(state.t, true); updateWeather(0, true); hudTimer = 0; lastSeasonDay = Math.floor(state.t); },
+  refresh() { land.updateSeason(state.t); flowers.update(state.t % 365); field.update(state.t, true); updateWeather(0, true); hudTimer = 0; lastSeasonDay = Math.floor(state.t); },
 };
