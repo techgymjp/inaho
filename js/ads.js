@@ -117,9 +117,11 @@ window.Ads = (() => {
   }
 
   // 全画面広告を表示し、閉じられたら resolve する（読み込めていないときは最大 timeout ミリ秒だけ待ち、だめなら出さずに resolve）
+  // 初期化（同意確認）が端末で終わらないことがあっても、ゲームを止めない
+  const initOrTimeout = (ms) => Promise.race([initDone, new Promise((r) => setTimeout(r, ms))]);
   async function showInterstitial(timeout = 0) {
     if (!AdMob || showing || !has('interstitial')) return;
-    await initDone;
+    await initOrTimeout(2500);
     if (!ready || !(await ensureLoaded('inter', timeout))) return;
     showing = true; slots.inter.loaded = false;
     window.GameSound && window.GameSound.suspend();
@@ -127,13 +129,14 @@ window.Ads = (() => {
     return new Promise((resolve) => {
       waiters.inter = () => { prepare('inter'); resolve(); };
       AdMob.showInterstitial().catch(() => finish('inter'));
+      setTimeout(() => { if (waiters.inter) finish('inter'); }, 90000);
     });
   }
 
   // リワード広告を表示する。結果は 'rewarded'（最後まで見た）/ 'skipped'（途中で閉じた）/ 'unavailable'（読み込めなかった）
   async function showRewarded() {
     if (!AdMob || showing || !has('rewarded')) return 'unavailable';
-    await initDone;
+    await initOrTimeout(2500);
     if (!ready || !(await ensureLoaded('reward', 8000))) return 'unavailable';
     showing = true; slots.reward.loaded = false;
     window.GameSound && window.GameSound.suspend();

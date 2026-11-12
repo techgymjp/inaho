@@ -369,6 +369,12 @@ export function createField(scene, quality) {
       outgoingLight = mix(outgoingLight, mud, uLevelOn * (1.0 - smoothstep(0.35, 0.65, lv)) * (0.55 + 0.4 * step(0.5, clod)));
       gl_FragColor = vec4( outgoingLight, alpha );`);
   water.material.needsUpdate = true;
+  // 軽量画質では、水面の映り込みを3フレームに1回だけ描き直す（いちばん重い処理のため）
+  if (quality.light) {
+    const orig = water.onBeforeRender;
+    let fr = 0;
+    water.onBeforeRender = function (...a) { if (fr++ % 3 === 0) orig.apply(this, a); };
+  }
   group.add(water);
 
   // ---------- 稲 ----------
@@ -525,7 +531,8 @@ export function createField(scene, quality) {
   function layout(t, force) {
     const g = riceGrowth(t);
     const plowed = t >= PLOW_DAY || t < PLANT_START;
-    const key = `${Math.floor(t * 4)}|${plowed}`;
+    // 稲の背丈は1日ではほとんど変わらないので、並べ直しは1日1回（重い処理でカクつかないように）
+    const key = `${Math.floor(t)}|${plowed}|${t >= PLANT_END}`;
     if (!force && key === lastLayoutKey) return;
     lastLayoutKey = key;
     let visibleEars = 0;

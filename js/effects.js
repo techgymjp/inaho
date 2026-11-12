@@ -7,9 +7,9 @@ import { BASIN_LEVEL } from './landscape.js';
 
 const N = makeNoise(4242);
 
-export function createEffects(scene) {
+export function createEffects(scene, quality = {}) {
   // ---------- 雨 ----------
-  const RAIN = 6000, BOX = 60, TOP = 30;
+  const RAIN = quality.light ? 2000 : 6000, BOX = 60, TOP = 30;
   const rp = new Float32Array(RAIN * 6);
   const rainSeed = new Float32Array(RAIN * 3);
   for (let i = 0; i < RAIN; i++) rainSeed.set([N.rnd() * BOX - BOX / 2, N.rnd() * TOP, N.rnd() * BOX - BOX / 2], i * 3);
@@ -21,7 +21,7 @@ export function createEffects(scene) {
   scene.add(rain);
 
   // ---------- 雪 ----------
-  const SNOW = 5000;
+  const SNOW = quality.light ? 1800 : 5000;
   const snowSeed = new Float32Array(SNOW * 4);
   for (let i = 0; i < SNOW; i++) snowSeed.set([N.rnd() * BOX - BOX / 2, N.rnd() * TOP, N.rnd() * BOX - BOX / 2, N.rnd()], i * 4);
   const snp = new Float32Array(SNOW * 3);

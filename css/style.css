@@ -164,3 +164,9 @@ body.has-banner .startInner, body.has-banner .panel { margin-bottom: 56px; }
 #howto .panel { display: flex; flex-direction: column; max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow: hidden; }
 #howto .panel ul { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 4px 0 0; padding-right: 4px; }
 #howto .panel .buttons { flex: 0 0 auto; margin: 10px auto 0; }
+
+/* 読み込みが終わるまでは、タイトル画面のボタンを押せない状態だとわかるようにする */
+.loadingNote { display: none; font-size: 14px; color: var(--ink-dim); }
+body.loading .loadingNote { display: block; }
+body.loading #start .buttons { opacity: .45; pointer-events: none; }
+.bootError { color: #ffb4a0; word-break: break-all; }

@@ -12,8 +12,19 @@
     { "imports": { "three": "./lib/three.module.js", "three/addons/": "./lib/addons/" } }
   </script>
 </head>
-<body class="title">
+<body class="title loading">
   <canvas id="scene"></canvas>
+  <script>
+    // 読み込み中やエラーをタイトル画面に表示する（ボタンが効かない原因を見つけやすくするため）
+    window.addEventListener('error', function (e) {
+      var el = document.getElementById('bootError');
+      if (el) { el.hidden = false; el.textContent = 'Error: ' + (e.message || e.type) + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : ''); }
+    }, true);
+    window.addEventListener('unhandledrejection', function (e) {
+      var el = document.getElementById('bootError');
+      if (el) { el.hidden = false; el.textContent = 'Error: ' + (e.reason && e.reason.message || e.reason); }
+    });
+  </script>
   <canvas id="trail"></canvas>
 
   <div id="yearTrack"><div id="yearBar"></div>
@@ -61,6 +72,8 @@
         <button id="btnHowto" data-i18n="menu.howto">あそびかた</button>
       </div>
       <p class="tiny" data-i18n="start.tiny">1日およそ1分（昼はゆっくり、夜は速く）。音が出ます。</p>
+      <p class="loadingNote" data-i18n="loading">読み込み中…</p>
+      <p class="tiny bootError" id="bootError" hidden></p>
       <p class="tiny footer"><span id="appVersion"></span> ・ <a id="privacyLink" href="https://techgym.jp/privacy-policy/" target="_blank" rel="noopener" data-i18n="privacy">プライバシーポリシー</a><span id="adPrivacy" hidden> ・ <a href="#" id="adPrivacyLink" data-i18n="adPrivacy">広告の設定</a></span></p>
     </div>
   </div>

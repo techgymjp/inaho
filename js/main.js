@@ -17,26 +17,27 @@ import {
 const isMobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad/.test(navigator.userAgent);
 const QUALITY = {
   high: { name: tr('quality.high'), shadow: 2048, reflect: 1024, blades: 10, bladeSegs: 3, ears: 4, earSegs: 5, trees: 26000, terrainSeg: 320, grass: 7000, pr: Math.min(devicePixelRatio, 2) },
-  low: { name: tr('quality.low'), shadow: 1024, reflect: 384, blades: 5, bladeSegs: 2, ears: 3, earSegs: 3, trees: 11000, terrainSeg: 200, grass: 2500, pr: Math.min(devicePixelRatio, 1.25) },
+  // スマートフォン・アプリ向け：木を減らし、遠くの地形を粗く、反射を小さく、解像度は等倍に
+  low: { name: tr('quality.low'), shadow: 1024, reflect: 256, blades: 4, bladeSegs: 2, ears: 3, earSegs: 3, trees: 4500, terrainSeg: 150, grass: 0, pr: 1, light: true },
 };
-const qKey = localStorage.getItem('suiden365.quality') || (isMobile ? 'low' : 'high');
+const qKey = localStorage.getItem('suiden365.quality') || (isMobile || (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) ? 'low' : 'high');
 const Q = QUALITY[qKey] || QUALITY.high;
 
 // ---------- レンダラ ----------
 const canvas = document.getElementById('scene');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !Q.light, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Q.pr);
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.NoToneMapping;
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.enabled = !Q.light; // 軽量画質（スマートフォン・アプリ）は影なしで軽く
+renderer.shadowMap.type = Q.light ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.15, 60000);
 
 const land = createLandscape(scene, renderer, Q);
 const field = createField(scene, Q);
-const fx = createEffects(scene);
+const fx = createEffects(scene, Q);
 const farm = createFarmwork({ scene, field, fx, audio: { flutter: () => audio.flutter && audio.flutter(), crash: () => audio.crash && audio.crash(), thud: () => audio.thud && audio.thud(), sfx: (k, v) => audio.sfx && audio.sfx(k, v) } });
 const flowers = createFlowers(scene);
 const starSky = createStarSky(scene, 37.5);
@@ -118,7 +119,7 @@ function setView(name, instant = false) {
 let idleT = 0;
 function updateCamera(dt) {
   // 見回したあと、しばらく触らなければ元のアングルにゆっくり戻る
-  if (!pointer) {
+  if (!pointer && !twoFinger) {
     idleT += dt;
     if (idleT > 4) { const d = Math.exp(-dt * 0.8); cam.dragYaw *= d; cam.dragPitch *= d; }
   } else idleT = 0;
@@ -265,19 +266,43 @@ function doCut(a, b) {
     finalizeHarvest(false);
   }
 }
+// 指の操作：1本指は田んぼの作業（なぞる）だけ。見回しは2本指（マウスはドラッグで見回し）
+const touches = new Map();   // 画面に触れている指
+let twoFinger = null;        // 2本指で見回し中のときの、前回の2本の中点
+function lookBy(dx, dy) {
+  const k = cam.fov / 55; // 望遠ほどゆっくり回す
+  const tele = (VIEWS[state.view].fov || 55) < 30; // 望遠では足元をのぞき込みすぎないように
+  cam.dragYaw -= dx * 0.004 * k;
+  cam.dragPitch = clamp(cam.dragPitch + dy * 0.003 * k, tele ? -0.1 : -0.7, tele ? 0.3 : 0.7);
+  cam.yaw -= dx * 0.004 * k; cam.pitch += dy * 0.003 * k; // すぐ反応させる
+}
+const midpoint = () => { let x = 0, y = 0; touches.forEach(p => { x += p.x; y += p.y; }); return { x: x / touches.size, y: y / touches.size }; };
 canvas.addEventListener('pointerdown', (e) => {
-  canvas.setPointerCapture(e.pointerId);
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* 端末によっては失敗する */ }
+  if (e.pointerType === 'touch') {
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size >= 2) { pointer = null; twoFinger = midpoint(); return; } // 2本目の指：作業をやめて見回しへ
+  }
   const g = groundPoint(e);
-  // 稲刈りの期間に田んぼの上から始めたスワイプは「刈り取り」、それ以外は見回し
+  // 作業の期間に田んぼの上から始めたスワイプは「作業」、それ以外は（マウスなら）見回し
   const onField = g && Math.abs(g.x) < FIELD_W / 2 && Math.abs(g.z) < FIELD_D / 2;
   const harvesting = !!(field.isHarvestable(state.t) && !state.finalized);
   const working = state.started && farm.active(state.t % 365).length > 0;
   const onHouse = working && farm.rayTest(ray, state.t % 365); // ハウスの雪下ろしは屋根をなぞる
   const cutting = !!((onField || onHouse) && (harvesting || working));
-  pointer = { id: e.pointerId, x: e.clientX, y: e.clientY, g, cutting };
+  pointer = { id: e.pointerId, x: e.clientX, y: e.clientY, g, cutting, touch: e.pointerType === 'touch' };
   if (cutting) trail.push({ x: e.clientX, y: e.clientY, t: performance.now() });
 });
 canvas.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (twoFinger && touches.size >= 2) {
+      const m = midpoint();
+      lookBy(m.x - twoFinger.x, m.y - twoFinger.y);
+      twoFinger = m;
+      return;
+    }
+  }
   if (!pointer || pointer.id !== e.pointerId) return;
   if (pointer.cutting) {
     const g = groundPoint(e);
@@ -290,16 +315,16 @@ canvas.addEventListener('pointermove', (e) => {
     }
     pointer.g = g;
     trail.push({ x: e.clientX, y: e.clientY, t: performance.now() });
-  } else {
-    const dx = e.clientX - pointer.x, dy = e.clientY - pointer.y;
-    const k = cam.fov / 55; // 望遠ほどゆっくり回す
-    cam.dragYaw -= dx * 0.004 * k; const tele = (VIEWS[state.view].fov || 55) < 30; // 望遠では足元をのぞき込みすぎないように
-    cam.dragPitch = clamp(cam.dragPitch + dy * 0.003 * k, tele ? -0.1 : -0.7, tele ? 0.3 : 0.7);
-    cam.yaw -= dx * 0.004 * k; cam.pitch += dy * 0.003 * k; // すぐ反応させる
+  } else if (!pointer.touch) {
+    lookBy(e.clientX - pointer.x, e.clientY - pointer.y); // マウスのドラッグ
   }
   pointer.x = e.clientX; pointer.y = e.clientY;
 });
-const endPtr = (e) => { if (pointer && pointer.id === e.pointerId) pointer = null; };
+const endPtr = (e) => {
+  touches.delete(e.pointerId);
+  if (touches.size < 2) twoFinger = null;
+  if (pointer && pointer.id === e.pointerId) pointer = null;
+};
 canvas.addEventListener('pointerup', endPtr);
 canvas.addEventListener('pointercancel', endPtr);
 
@@ -426,6 +451,17 @@ function newYear() {
   toast(msg.newYear(state.year, last), 8);
 }
 
+// 動きが重いときは描画の解像度を少し下げ、余裕があれば戻す（スマートフォンでもなめらかに）
+let perfT = 0, perfN = 0, curPR = Q.pr;
+function adaptResolution(dt) {
+  perfT += dt; perfN++;
+  if (perfT < 2) return;
+  const avg = perfT / perfN; perfT = 0; perfN = 0;
+  let next = curPR;
+  if (avg > 1 / 40 && curPR > 0.6) next = Math.max(0.6, curPR - 0.1);
+  else if (avg < 1 / 55 && curPR < Q.pr) next = Math.min(Q.pr, curPR + 0.1);
+  if (next !== curPR) { curPR = next; renderer.setPixelRatio(curPR); renderer.setSize(innerWidth, innerHeight); }
+}
 function frame(now) {
   const dt = Math.min(0.1, (now - lastT) / 1000);
   lastT = now;
@@ -517,6 +553,7 @@ function frame(now) {
   audio.update(t % 365, (t % 1) * 24, wx, light);
 
   renderer.render(scene, camera);
+  if (!MANUAL) adaptResolution(dt);
   drawTrail();
   if (toastTimer > 0) { toastTimer -= dt; if (toastTimer <= 0) ui.toast.classList.remove('show'); }
   hudTimer -= dt;
@@ -599,18 +636,22 @@ function openPause() {
 }
 async function resumeFromPause() {
   $('menu').classList.remove('show');
-  await Ads.showInterstitial(3000);
+  try { await Ads.showInterstitial(3000); } catch (e) { /* 続ける */ }
   state.paused = shown('eventCard') || shown('rewardAsk') ? true : false;
   ui.pause.textContent = state.paused ? '▶' : '❚❚';
 }
 async function backToTitle() {
   save();
-  await Ads.showInterstitial(3000);
+  try { await Ads.showInterstitial(3000); } catch (e) { /* 続ける */ }
   location.reload(); // タイトル画面（「つづきから」）に戻る
 }
 async function playFromTitle(opt) {
-  await Ads.showInterstitial(3000);
+  // ゲームはすぐに始め、全画面広告はそのあとに出す（広告の読み込みが遅くても、ボタンが効かないように見えないため）
   startGame(opt);
+  const was = state.paused;
+  state.paused = true;
+  try { await Ads.showInterstitial(3000); } catch (e) { /* 広告が出せなくても続ける */ }
+  if (!shown('eventCard') && !shown('rewardAsk') && !shown('menu')) state.paused = was;
 }
 let howtoFrom = 'start';
 function openHowto(from) { howtoFrom = from; $('howto').classList.add('show'); }
@@ -728,6 +769,8 @@ field.update(state.t, true);
 land.updateSeason(state.t); flowers.update(state.t % 365);
 state.t = doyOf(5, 19) + 16.9 / 24; // 水鏡の夕方
 if (!MANUAL) requestAnimationFrame(frame);
+// 準備ができたら、タイトル画面のボタンを押せるようにする
+document.body.classList.remove('loading');
 // web-only:start
 window.__suiden = {
   state, field, setView, setSpeed, startGame, wx, land, scene, camera, renderer, farm,
