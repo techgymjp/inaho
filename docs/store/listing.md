@@ -83,7 +83,7 @@
 水田365日をリリースしました。山あいの田んぼで、米作りの一年をお楽しみください。
 </ja-JP>
 <en-US>
-Suiden 365 is here. Enjoy a year of rice farming in a mountain valley in Japan.
+Rice Paddy 365 is here. Enjoy a year of rice farming in a mountain valley in Japan.
 </en-US>
 ```
 
@@ -93,9 +93,9 @@ Suiden 365 is here. Enjoy a year of rice farming in a mountain valley in Japan.
 
 ### App name (30 characters max)
 
-Suiden 365: Rice Farming Sim
+Rice Paddy 365: Farming Sim
 
-(28 characters. The name on the home screen is "Suiden 365".)
+(27 characters. The name on the home screen is "Rice Paddy 365".)
 
 ### Short description (80 characters max)
 
@@ -106,7 +106,7 @@ A relaxing year of rice farming in rural Japan: plant, harvest, enjoy 4 seasons.
 Watch over a year of rice paddies in a mountain valley, about one day per minute.
 Snowmelt, flooded paddies mirroring the mountains, rice planting, green fields, golden ears of rice. And the harvest is in your hands.
 
-Suiden 365 is a relaxing rice farming simulation set in the countryside of Aizu, Fukushima, Japan.
+Rice Paddy 365 is a relaxing rice farming simulation set in the countryside of Aizu, Fukushima, Japan.
 The game starts on today's date and the seasons follow the real calendar. Enjoy the slow beauty of rural Japan while you take care of the farm work, from tilling the soil to harvesting the rice.
 
 ■ Farm work with a swipe

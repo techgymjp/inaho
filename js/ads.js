@@ -72,7 +72,7 @@ window.Ads = (() => {
 
   function finish(kind, result) {
     showing = false;
-    window.GameSound && window.GameSound.resume();
+    if (!(document.getElementById('menu') && document.getElementById('menu').classList.contains('show'))) window.GameSound && window.GameSound.resume();
     syncBanner();
     const w = waiters[kind];
     waiters[kind] = null;

@@ -244,12 +244,13 @@ let lastSwish = 0;
 // 遠くの稲ほど指の太さが広い範囲に当たる
 const swipeRadius = (b) => clamp(camera.position.distanceTo(b) * 0.045, 0.9, 3);
 function doWork(a, b) {
+  if (state.paused) return;
   const n = farm.swipe(a, b, swipeRadius(b), state.t % 365);
   const now = performance.now();
   if (n && now - lastSwish > 90) lastSwish = now; // 効果音と振動は作業ごとに farmwork 側で
 }
 function doCut(a, b) {
-  if (!field.isHarvestable(state.t) || state.finalized) return;
+  if (state.paused || !field.isHarvestable(state.t) || state.finalized) return;
   const r = swipeRadius(b);
   const ids = field.cutAlong(a.x, a.z, b.x, b.z, r);
   if (!ids.length) return;
@@ -291,7 +292,8 @@ canvas.addEventListener('pointerdown', (e) => {
   const harvesting = !!(field.isHarvestable(state.t) && !state.finalized);
   const working = state.started && farm.active(state.t % 365).length > 0;
   const onHouse = working && farm.rayTest(ray, state.t % 365); // ハウスの雪下ろしは屋根をなぞる
-  const cutting = !!((onField || onHouse) && (harvesting || working));
+  // 一時停止中（時計が止まっている間）は作業できない
+  const cutting = !state.paused && !rewardOpen && !Ads.showing && !!((onField || onHouse) && (harvesting || working));
   pointer = { id: e.pointerId, x: e.clientX, y: e.clientY, g, cutting, touch: e.pointerType === 'touch' };
   if (cutting) trail.push({ x: e.clientX, y: e.clientY, t: performance.now() });
 });
@@ -308,7 +310,7 @@ canvas.addEventListener('pointermove', (e) => {
   if (!pointer || pointer.id !== e.pointerId) return;
   if (pointer.cutting) {
     const g = groundPoint(e);
-    farm.rayHit(ray, state.t % 365);
+    if (!state.paused) farm.rayHit(ray, state.t % 365);
     if (g && pointer.g) {
       // 細かく分割して取りこぼしを防ぐ
       const steps = Math.ceil(pointer.g.distanceTo(g) / 0.5);
@@ -663,10 +665,12 @@ function openPause() {
   ui.pause.textContent = '▶';
   renderRecords();
   $('menu').classList.add('show');
+  audio.suspend(); // 一時停止中は音も止める
 }
 async function resumeFromPause() {
   $('menu').classList.remove('show');
   try { await Ads.showInterstitial(3000); } catch (e) { /* 続ける */ }
+  audio.resume();
   state.paused = shown('eventCard') || shown('rewardAsk') ? true : false;
   ui.pause.textContent = state.paused ? '▶' : '❚❚';
 }
@@ -765,7 +769,7 @@ addEventListener('visibilitychange', () => {
     save();
     if (state.started && !shown('menu') && !shown('result') && !shown('eventCard') && !shown('rewardAsk')) openPause();
     audio.suspend();
-  } else audio.resume();
+  } else if (!shown('menu')) audio.resume(); // 一時停止画面のままなら音は止めたまま
 });
 // Android の戻るボタン：プレイ中は一時停止、一時停止中は再開、タイトルではアプリを終了
 if (native && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {

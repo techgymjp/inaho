@@ -156,7 +156,7 @@ export const msg = {
   extended: (n) => LANG === 'ja' ? `稲刈りの延長 ${n}回` : `Harvest extended ${n}×`,
   shareText: (rec) => LANG === 'ja'
     ? `水田365日　${rec.year}年目の収穫は ${rec.kg.toLocaleString()}kg（${(rec.kg / 60).toFixed(1)}俵）、${rec.grade}でした。${rec.ext ? `（広告での手助け ${rec.ext}回）` : ''} #水田365日`
-    : `Suiden 365 — Year ${rec.year} harvest: ${rec.kg.toLocaleString()} kg (${(rec.kg / 60).toFixed(1)} bales), ${gradeText(rec.grade)}.${rec.ext ? ` (helped by ads ${rec.ext}×)` : ''} #Suiden365`,
+    : `Rice Paddy 365 — Year ${rec.year} harvest: ${rec.kg.toLocaleString()} kg (${(rec.kg / 60).toFixed(1)} bales), ${gradeText(rec.grade)}.${rec.ext ? ` (helped by ads ${rec.ext}×)` : ''} #RicePaddy365`,
   best: (r) => LANG === 'ja' ? `これまでの最高：${r.kg.toLocaleString()}kg（${r.year}年目・${r.grade}）` : `Best harvest: ${r.kg.toLocaleString()} kg (year ${r.year}, ${gradeText(r.grade)})`,
   confirmNewGame: () => LANG === 'ja' ? 'これまでの続きと記録は消えます。今日の日付から新しく始めますか？' : 'Your saved progress and records will be erased. Start a new game from today?',
   confirmReset: () => LANG === 'ja' ? '記録を消して最初からやり直しますか？' : 'Erase your records and start over?',
@@ -271,8 +271,8 @@ export function applyStatic() {
   document.documentElement.lang = LANG;
   document.querySelectorAll('[data-i18n]').forEach(el => { el.innerHTML = t(el.dataset.i18n); });
   if (LANG !== 'ja') {
-    document.title = 'Suiden 365 — A Year in the Rice Paddies';
+    document.title = 'Rice Paddy 365 — A Year of Rice Farming';
     const h1 = document.querySelector('h1');
-    if (h1 && !document.getElementById('enSub')) h1.insertAdjacentHTML('afterend', '<p class="pre" id="enSub">Suiden 365 · A Year in the Rice Paddies</p>');
+    if (h1 && !document.getElementById('enSub')) h1.insertAdjacentHTML('afterend', '<p class="pre" id="enSub">Rice Paddy 365 · A Year of Rice Farming</p>');
   }
 }
