@@ -199,17 +199,19 @@ export function createLandscape(scene, renderer, quality) {
     vInfo[i * 4] = tp.getY(i);
     vInfo[i * 4 + 1] = clamp(0.5 + N.fbm(x / 350 + 9, z / 350, 3) * 1.4 + (tp.getY(i) - 300) / 900); // 針葉樹の割合
     vInfo[i * 4 + 2] = N.fbm(x / 70, z / 70, 3) * 0.5 + 0.5;
-    vInfo[i * 4 + 3] = smooth(0.82, 0.62, tn.getY(i)) * smooth(250, 600, tp.getY(i));
+    vInfo[i * 4 + 3] = smooth(0.62, 0.42, tn.getY(i)) * smooth(900, 1400, tp.getY(i)); // 高所の急な岩場だけ
   }
   const tCol = new Float32Array(vCount * 3);
   tGeo.setAttribute('color', new THREE.BufferAttribute(tCol, 3));
   const tMat = toon({ vertexColors: true });
   const terrainGrass = grassTexture();
+  const snowU = { uSnowLine: { value: 5000 }, uWinter: { value: 0 }, uSnowCol: { value: hex('#f2f6fb') } };
   tMat.onBeforeCompile = (sh) => {
     sh.uniforms.uGrass = { value: terrainGrass };
+    Object.assign(sh.uniforms, snowU);
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWp = (modelMatrix*vec4(transformed,1.0)).xyz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp; uniform sampler2D uGrass;\n' + GLSL_NOISE)
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp; uniform sampler2D uGrass; uniform float uSnowLine, uWinter; uniform vec3 uSnowCol;\n' + GLSL_NOISE)
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
         // 田んぼの部分は地形をくり抜く
         if (abs(vWp.x) < ${(FIELD_HALF_W).toFixed(2)} && abs(vWp.z) < ${(FIELD_HALF_D).toFixed(2)}) discard;`)
@@ -228,7 +230,21 @@ export function createLandscape(scene, renderer, quality) {
         diffuseColor.rgb *= mix(1.0, 0.94 + 0.1*step(0.5, vnoise(vWp.xz*0.08)), g);
         // 近くの草地は草のテクスチャで
         float near = g * (1.0 - smoothstep(60.0, 260.0, camD));
-        diffuseColor.rgb *= mix(1.0, 0.5 + 0.7*texture2D(uGrass, vWp.xz*0.4).r, near);`);
+        diffuseColor.rgb *= mix(1.0, 0.5 + 0.7*texture2D(uGrass, vWp.xz*0.4).r, near);
+        // 山の雪：雪線の上は白く、境目は大きなまだら（残雪）と谷筋に沿った雪形になる
+        {
+          vec3 fn = normalize(cross(dFdx(vWp), dFdy(vWp)));
+          float flatness = abs(fn.y);
+          float patchy = (fbm2(vWp.xz*0.0035) - 0.5)*520.0 + (vnoise(vWp.xz*0.018) - 0.5)*160.0;
+          float gully = (1.0 - abs(vnoise(vWp.xz*0.006 + vec2(vWp.y*0.004, 0.0))*2.0 - 1.0));  // 谷筋
+          float line = uSnowLine - gully*140.0;
+          float sn = smoothstep(line - 25.0, line + 25.0, vWp.y + patchy);
+          sn *= mix(0.55, 1.0, smoothstep(0.45, 0.75, flatness));   // 急斜面は雪が付きにくい
+          // 冬は山じゅう真っ白、森のところだけ木々が透けて見える
+          float forest = smoothstep(0.45, 0.6, vnoise(vWp.xz*0.03));
+          float win = uWinter * smoothstep(20.0, 60.0, vWp.y) * mix(1.0, 0.78, forest);
+          diffuseColor.rgb = mix(diffuseColor.rgb, uSnowCol, clamp(max(sn, win), 0.0, 1.0));
+        }`);
   };
   const terrain = new THREE.Mesh(tGeo, tMat);
   terrain.receiveShadow = true;
@@ -243,7 +259,8 @@ export function createLandscape(scene, renderer, quality) {
   group.add(village.group);
 
   // ---------- 北の丘のふもとの集落 ----------
-  group.add(buildHamlet());
+  const hamlet = buildHamlet();
+  group.add(hamlet.group);
 
   // ---------- 鉄道（遠くを走るローカル線） ----------
   const railway = buildRailway();
@@ -279,15 +296,18 @@ export function createLandscape(scene, renderer, quality) {
       tmp.lerp(tmp2, flat);
       tmp.lerp(col.rock, rock * 0.8);
       // 雪（雪線より上、冬は全体）
-      let s = smooth(sl - 60, sl + 60, h + (hue - 0.5) * 140);
-      s = Math.max(s, sc * (0.8 + 0.2 * (1 - fm)));
+      // 山の雪線より上の雪はシェーダーで画素ごとに描く（残雪のまだら模様）。ここでは平地の積雪だけ
+      let s = sc * (0.8 + 0.2 * (1 - fm));
       s *= 1 - rock * 0.4;
       tmp.lerp(col.snow, clamp(s));
       tCol[i * 3] = tmp.r; tCol[i * 3 + 1] = tmp.g; tCol[i * 3 + 2] = tmp.b;
     }
     tGeo.attributes.color.needsUpdate = true;
+    snowU.uSnowLine.value = sl;
+    snowU.uWinter.value = sc;
     forest.updateSeason(t, col);
     village.updateSeason(t);
+    hamlet.updateSeason(t);
   }
 
   // ---------- 時刻・天気による空と光 ----------
@@ -444,6 +464,7 @@ function buildForest(quality) {
     const x = Math.cos(ang) * r / 0.8, z = Math.sin(ang) * r;
     if (Math.abs(x) < 70 && Math.abs(z) < 60) continue; // 田んぼの近くは空ける
     if (Math.abs(z - RAIL_Z) < 22 && Math.abs(x) < 1600) continue; // 線路沿い
+    if (z < -300 && z > -500 && Math.abs(x) < 750) continue; // 集落と寺の境内
     const y = terrainHeight(x, z);
     if (y < 6) continue; // 平地には植えない（丘や山を森で覆う）
     if (y > 1250) continue;
@@ -1035,23 +1056,114 @@ function buildCumulus() {
 function buildHamlet() {
   const group = new THREE.Group();
   const R = makeNoise(5150).rnd;
-  const wallCols = ['#f1efe8', '#e6e1d4', '#d9d6cf', '#efe9dc'], roofCols = ['#4a5260', '#6b3a2e', '#3f5a6e', '#585858'];
-  const body = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
-  for (let i = 0; i < 22; i++) {
-    const x = -700 + R() * 1500, z = -330 - R() * 120;
+  const roofMats = [];
+  const box = (w, h, d, m, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); return o; };
+  const rep = (t, x, y) => { const c = t.clone(); c.repeat.set(x, y); c.needsUpdate = true; return c; };
+  const plaster = plasterTexture(), siding = boardTexture('#8a7c6a'), tile = tileTexture();
+  const winM = toon({ color: '#2a3138' });
+
+  // ---- 集落の家：切妻屋根の2階建て／平屋、外壁は板張りかしっくい ----
+  const wallKinds = [toon({ map: rep(plaster, 2, 1) }), toon({ map: rep(siding, 4, 1) }), toon({ map: rep(boardTexture('#5d4c3c'), 4, 1) })];
+  const roofCols = ['#3f4652', '#7a3527', '#34536b', '#4a4a4a', '#5a4234'];
+  for (let i = 0; i < 26; i++) {
+    const x = -700 + R() * 1500, z = -330 - R() * 140;
+    if (Math.abs(x - 20) < 45 && z > -390) continue; // 寺の境内はあける
     const y = terrainHeight(x, z);
     if (y > 25) continue;
-    const w = 9 + R() * 6, d = 7 + R() * 3, h = 4 + R() * 3;
+    const two = R() < 0.6;
+    const w = 9 + R() * 4, d = 7 + R() * 2, h = two ? 5.6 : 3.2;
     const house = new THREE.Group();
-    const b = new THREE.Mesh(body, toon({ color: wallCols[i % 4] }));
-    b.scale.set(w, h, d);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.hypot(w, d) * 0.56, 3 + R() * 1.5, 4, 1).rotateY(Math.PI / 4), toon({ color: roofCols[(i * 7) % 4] }));
-    roof.scale.set(w / Math.hypot(w, d) * 1.42, 1, d / Math.hypot(w, d) * 1.42);
-    roof.position.y = h + 1.4;
-    house.add(b, roof);
-    house.position.set(x, y - 0.2, z);
-    house.rotation.y = (R() - 0.5) * 0.4;
+    house.add(box(w, h, d, wallKinds[i % 3], 0, h / 2, 0));
+    house.add(box(w + 0.1, 0.5, d + 0.1, toon({ color: '#7d7a73' }), 0, 0.25, 0));          // 基礎
+    // 窓（正面と側面）
+    for (let k = 0; k < 3; k++) {
+      house.add(box(1.4, 1.1, 0.08, winM, -w / 3 + k * w / 3, 1.6, d / 2 + 0.03));
+      if (two) house.add(box(1.2, 0.9, 0.08, winM, -w / 3 + k * w / 3, 4.2, d / 2 + 0.03));
+    }
+    const rm = toon({ color: roofCols[(i * 7) % roofCols.length] });
+    roofMats.push(rm);
+    const roof = new THREE.Mesh(gableRoofUV(w + 1.4, d + 1.8, 2.2 + R() * 0.8), rm);
+    roof.position.y = h;
+    house.add(roof);
+    if (two) house.add(box(w * 0.5, 0.12, 1.2, rm, -w * 0.15, 3.0, d / 2 + 0.6)); // 1階の庇
+    house.position.set(x, y - 0.1, z);
+    house.rotation.y = (R() - 0.5) * 0.3;
+    house.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     group.add(house);
   }
-  return group;
+
+  // ---- 寺：本堂（入母屋の大屋根）、向拝、鐘楼、石灯籠、杉木立 ----
+  const temple = new THREE.Group();
+  {
+    const wood = toon({ map: rep(boardTexture('#5a3b28'), 3, 1) }), pillar = toon({ color: '#4a2e1f' });
+    const stone = toon({ color: '#9b978e' }), tileM = toon({ map: rep(tile, 6, 2) });
+    roofMats.push(tileM);
+    const W = 15, D = 13, H = 5;
+    temple.add(box(W + 4, 1.2, D + 4, stone, 0, 0.6, 0));                    // 基壇
+    temple.add(box(W, H, D, wood, 0, 1.2 + H / 2, 0));                         // 本堂
+    for (let k = 0; k <= 6; k++) for (const side of [-1, 1]) temple.add(box(0.45, H, 0.45, pillar, -W / 2 + k * W / 6, 1.2 + H / 2, side * (D / 2 + 0.05)));
+    // 正面の格子戸（蔀戸）
+    for (let k = 0; k < 5; k++) {
+      const door = new THREE.Mesh(new THREE.PlaneGeometry(W / 6 - 0.5, H - 1.2), toon({ map: shojiTexture() }));
+      door.position.set(-W / 2 + W / 6 * (k + 0.5) + W / 12, 1.2 + (H - 1.2) / 2 + 0.2, D / 2 + 0.08);
+      temple.add(door);
+    }
+    temple.add(box(W + 0.6, 0.5, D + 0.6, pillar, 0, 1.2 + H - 0.2, 0));    // 頭貫
+    // 入母屋屋根：下の寄棟部分と上の切妻部分。軒は大きく張り出す
+    const lower = new THREE.Mesh(hipRoofUV(W + 8, D + 8, 4.2), tileM);
+    lower.position.y = 1.2 + H + 0.3;
+    const upper = new THREE.Mesh(gableRoofUV(W + 1.5, D * 0.62, 3.6), tileM);
+    upper.position.y = 1.2 + H + 0.3 + 3.1;
+    const eaveRim = new THREE.Mesh(roofRim(W + 8, D + 8, 0.45), toon({ color: '#2d3036' }));
+    eaveRim.position.y = 1.2 + H - 0.15;
+    temple.add(lower, upper, eaveRim);
+    const ridgeY = 1.2 + H + 0.3 + 3.1 + 3.6;
+    temple.add(box(W + 1.8, 0.7, 0.8, toon({ color: '#2a2d33' }), 0, ridgeY + 0.15, 0));
+    for (const side of [-1, 1]) temple.add(box(0.8, 1.4, 0.9, toon({ color: '#2a2d33' }), side * (W / 2 + 0.9), ridgeY + 0.45, 0)); // 鬼瓦
+    // 向拝（正面に突き出した屋根）と階段
+    const kohai = new THREE.Mesh(gableRoofUV(5.5, 4.5, 1.6), tileM);
+    kohai.rotation.y = Math.PI / 2; kohai.position.set(0, 1.2 + H - 0.4, D / 2 + 3.2);
+    temple.add(kohai);
+    for (const side of [-1, 1]) temple.add(box(0.4, H - 0.6, 0.4, pillar, side * 2.3, 1.2 + (H - 0.6) / 2, D / 2 + 4.6));
+    for (let k = 0; k < 4; k++) temple.add(box(5, 0.3, 0.6, stone, 0, 0.15 + k * 0.3, D / 2 + 3.6 - k * 0.6 + 2.6));
+    // 石灯籠
+    for (const side of [-1, 1]) {
+      const l = new THREE.Group();
+      l.add(box(0.9, 0.3, 0.9, stone, 0, 0.15, 0), box(0.35, 1.3, 0.35, stone, 0, 0.95, 0), box(0.8, 0.6, 0.8, stone, 0, 1.9, 0));
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(0.8, 0.6, 4).rotateY(Math.PI / 4), stone); cap.position.y = 2.5; l.add(cap);
+      l.position.set(side * 5, 0, D / 2 + 12);
+      temple.add(l);
+    }
+    // 鐘楼（四本柱に入母屋の小屋根、梵鐘）
+    const bell = new THREE.Group();
+    bell.add(box(5, 0.8, 5, stone, 0, 0.4, 0));
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) bell.add(box(0.3, 4.2, 0.3, pillar, sx * 1.8, 0.8 + 2.1, sz * 1.8));
+    const bRoof = new THREE.Mesh(hipRoofUV(6.2, 6.2, 2.4), tileM); bRoof.position.y = 5.0; bell.add(bRoof);
+    const b2 = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.75, 1.6, 12), toon({ color: '#3d5a4c' })); b2.position.y = 3.6; bell.add(b2);
+    bell.position.set(W / 2 + 9, 0, D / 2 + 4);
+    temple.add(bell);
+  }
+  const tx = 20, tz = -345;
+  temple.position.set(tx, terrainHeight(tx, tz), tz);
+  temple.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  group.add(temple);
+  // 境内の杉木立（本堂の後ろと両脇）
+  const spots = [];
+  for (let i = 0; i < 26; i++) {
+    const a = Math.PI * (0.05 + 0.9 * i / 25);
+    spots.push([tx + Math.cos(a) * (22 + R() * 6), tz - Math.sin(a) * (16 + R() * 8)]);
+  }
+  const cedars = new THREE.InstancedMesh(cedarGeometry(12, 1, 58), toon({ color: '#2a4a2c' }), spots.length);
+  const co = new THREE.Object3D();
+  spots.forEach(([x, z], i) => { const h = 11 + R() * 4; co.position.set(x, terrainHeight(x, z), z); co.rotation.y = R() * 6; co.scale.set(h * 0.9, h, h * 0.9); co.updateMatrix(); cedars.setMatrixAt(i, co.matrix); });
+  cedars.castShadow = true;
+  group.add(cedars);
+
+  const roofBase = roofMats.map(m => m.color.clone());
+  function updateSeason(t) {
+    const snow = snowCover(t);
+    roofMats.forEach((m, i) => m.color.copy(roofBase[i]).lerp(hex('#f0f4f8').multiplyScalar(m.map ? 1.8 : 1), snow * 0.9));
+    cedars.material.color.set('#2a4a2c').lerp(hex('#5d5232'), (1 - foliage(t).green) * 0.45).lerp(hex('#c9d2da'), snow * 0.35);
+  }
+  return { group, updateSeason };
 }

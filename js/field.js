@@ -233,6 +233,49 @@ export function createField(scene, quality) {
   const { map, nmap } = mudTextures();
   map.repeat.set(5, 6); nmap.repeat.set(5, 6);
   const mudMat = toon({ map, normalMap: nmap, normalScale: new THREE.Vector2(0.6, 0.6) });
+  // ---------- 作業マスク（1m 区画）：田起こし・代かきの進み具合 ----------
+  const MW = Math.ceil(FIELD_W), MD = Math.ceil(FIELD_D);
+  const mkMask = () => { const a = new Uint8Array(MW * MD); const t = new THREE.DataTexture(a, MW, MD, THREE.RedFormat); t.minFilter = t.magFilter = THREE.LinearFilter; t.needsUpdate = true; return { a, t }; };
+  const till = mkMask(), level = mkMask();
+  const mudU = { uTill: { value: till.t }, uTillOn: { value: 0 }, uTilled: { value: hex('#5e4330') }, uUntilled: { value: hex('#c4ad86') } };
+  mudMat.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, mudU);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vMw;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvMw = (modelMatrix*vec4(transformed,1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vMw; uniform sampler2D uTill; uniform float uTillOn; uniform vec3 uTilled, uUntilled;')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        if (uTillOn > 0.5) {
+          float m = texture2D(uTill, vec2((vMw.x - ${X0.toFixed(3)}) / ${MW}.0, (vMw.z - ${Z0.toFixed(3)}) / ${MD}.0)).r;
+          float furrow = 0.82 + 0.18 * smoothstep(-0.3, 0.6, sin(vMw.z * 7.5));   // 耕した筋
+          diffuseColor.rgb *= mix(uUntilled, uTilled * furrow, smoothstep(0.35, 0.65, m));
+        }`);
+  };
+  // 線分 a→b から半径 r 以内の区画に印をつけ、新しく印をつけた数を返す
+  function paint(mask, ax, az, bx, bz, r) {
+    let n = 0;
+    const i0 = Math.max(0, Math.floor(Math.min(ax, bx) - r - X0)), i1 = Math.min(MW - 1, Math.ceil(Math.max(ax, bx) + r - X0));
+    const j0 = Math.max(0, Math.floor(Math.min(az, bz) - r - Z0)), j1 = Math.min(MD - 1, Math.ceil(Math.max(az, bz) + r - Z0));
+    const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1e-6;
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const k = j * MW + i;
+      if (mask.a[k]) continue;
+      const px = X0 + i + 0.5 - ax, pz = Z0 + j + 0.5 - az;
+      const s2 = clamp((px * dx + pz * dz) / L2), ex = px - dx * s2, ez = pz - dz * s2;
+      if (ex * ex + ez * ez <= r * r) { mask.a[k] = 255; n++; }
+    }
+    if (n) mask.t.needsUpdate = true;
+    return n;
+  }
+  // 区画のうち田面（畦でない所）の数
+  let paddyCells = 0;
+  const isPaddyCell = new Uint8Array(MW * MD);
+  for (let j = 0; j < MD; j++) for (let i = 0; i < MW; i++) {
+    const x = X0 + i + 0.5, z = Z0 + j + 0.5;
+    for (let p = 0; p < COLS * ROWS; p++) { const r = paddyRect(p); if (x > r.x && x < r.x + r.w && z > r.z && z < r.z + r.d) { isPaddyCell[j * MW + i] = 1; paddyCells++; break; } }
+  }
+  const maskRatio = (mask) => { let n = 0; for (let k = 0; k < MW * MD; k++) if (isPaddyCell[k] && mask.a[k]) n++; return n / paddyCells; };
+  const fillMask = (mask, v) => { mask.a.fill(v); mask.t.needsUpdate = true; };
+
   const floors = [];
   for (let p = 0; p < COLS * ROWS; p++) {
     const r = paddyRect(p);
@@ -306,6 +349,19 @@ export function createField(scene, quality) {
   water.rotation.x = -Math.PI / 2;
   water.position.y = 0.06;
   water.material.uniforms.size.value = 6;
+  // 代かき前は泥のかたまりが水面から顔を出し、濁って映り込みが弱い
+  water.material.uniforms.uLevel = { value: level.t };
+  water.material.uniforms.uLevelOn = { value: 0 };
+  water.material.fragmentShader = water.material.fragmentShader
+    .replace('uniform vec3 waterColor;', 'uniform vec3 waterColor;\nuniform sampler2D uLevel; uniform float uLevelOn;')
+    .replace('gl_FragColor = vec4( outgoingLight, alpha );', `
+      float lv = texture2D(uLevel, vec2((worldPosition.x - ${X0.toFixed(3)}) / ${MW}.0, (worldPosition.z - ${Z0.toFixed(3)}) / ${MD}.0)).r;
+      vec2 cell = floor(worldPosition.xz * 2.2);
+      float clod = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+      vec3 mud = vec3(0.30, 0.23, 0.16) * (0.75 + 0.5 * clod);
+      outgoingLight = mix(outgoingLight, mud, uLevelOn * (1.0 - smoothstep(0.35, 0.65, lv)) * (0.55 + 0.4 * step(0.5, clod)));
+      gl_FragColor = vec4( outgoingLight, alpha );`);
+  water.material.needsUpdate = true;
   group.add(water);
 
   // ---------- 稲 ----------
@@ -379,6 +435,7 @@ export function createField(scene, quality) {
 
   // 状態: 0=未刈 1=刈った 2=倒伏
   const cut = new Uint8Array(TOTAL);
+  const planted = new Uint8Array(TOTAL); // 田植え期間中にプレイヤーが植えた株
   const o = new THREE.Object3D();
 
   // ---------- はざ掛け ----------
@@ -432,39 +489,39 @@ export function createField(scene, quality) {
   const tmp = new THREE.Color();
   let lastDroop = -1, lastLayoutKey = '';
 
+  // 1株ぶんの表示を決める（耳が見えるなら true）
+  function setHill(i, g, t, plowed) {
+    let sx = 0, sy = 0, tilt = 0, ex = 0;
+    if (g && !plowed && (t >= PLANT_END || planted[i])) {
+      if (cut[i] === 1) { sx = 1; sy = 0.13; }
+      else if (cut[i] === 2) { sx = 1.15; sy = g.h * 0.9 * hs[i]; tilt = 1.2; ex = 1; }
+      else {
+        const tiller = 0.45 + 0.55 * smooth(PLANT_START, doyOf(6, 30), t); // 分げつで株が広がる
+        sx = tiller * (0.9 + hs[i] * 0.2); sy = g.h * hs[i]; ex = g.ear;
+      }
+    }
+    o.position.set(hx[i], 0.0, hz[i]);
+    o.rotation.set(0, hrot[i], 0);
+    if (tilt) { o.rotation.set(tilt * Math.cos(hrot[i] * 3), hrot[i], tilt * Math.sin(hrot[i] * 3) * 0.6); }
+    o.scale.set(sx || 1e-4, sy || 1e-4, sx || 1e-4);
+    o.updateMatrix();
+    rice.setMatrixAt(i, o.matrix);
+    if (ex > 0.01 && sy > 0.2) {
+      o.scale.set(sx, sy, sx); o.updateMatrix(); ears.setMatrixAt(i, o.matrix);
+      return true;
+    }
+    o.scale.setScalar(1e-4); o.updateMatrix(); ears.setMatrixAt(i, o.matrix);
+    return false;
+  }
+
   function layout(t, force) {
     const g = riceGrowth(t);
     const plowed = t >= PLOW_DAY || t < PLANT_START;
-    const plantProg = clamp((t - PLANT_START) / (PLANT_END - PLANT_START));
     const key = `${Math.floor(t * 4)}|${plowed}`;
     if (!force && key === lastLayoutKey) return;
     lastLayoutKey = key;
     let visibleEars = 0;
-    for (let i = 0; i < TOTAL; i++) {
-      let sx = 0, sy = 0, tilt = 0, ex = 0;
-      if (g && !plowed && plantOrder[i] <= plantProg + 1e-6) {
-        if (cut[i] === 1) { sx = 1; sy = 0.13; }
-        else if (cut[i] === 2) { sx = 1.15; sy = g.h * 0.9 * hs[i]; tilt = 1.2; ex = 1; }
-        else {
-          const tiller = 0.45 + 0.55 * smooth(PLANT_START, doyOf(6, 30), t); // 分げつで株が広がる
-          sx = tiller * (0.9 + hs[i] * 0.2); sy = g.h * hs[i]; ex = g.ear;
-        }
-      }
-      o.position.set(hx[i], 0.0, hz[i]);
-      o.rotation.set(0, hrot[i], 0);
-      if (tilt) { o.rotation.set(tilt * Math.cos(hrot[i] * 3), hrot[i], tilt * Math.sin(hrot[i] * 3) * 0.6); }
-      o.scale.set(sx || 1e-4, sy || 1e-4, sx || 1e-4);
-      o.updateMatrix();
-      rice.setMatrixAt(i, o.matrix);
-      if (ex > 0.01 && sy > 0.2) {
-        o.scale.set(sx, sy, sx);
-        o.updateMatrix();
-        ears.setMatrixAt(i, o.matrix);
-        visibleEars++;
-      } else {
-        o.scale.setScalar(1e-4); o.updateMatrix(); ears.setMatrixAt(i, o.matrix);
-      }
-    }
+    for (let i = 0; i < TOTAL; i++) if (setHill(i, g, t, plowed)) visibleEars++;
     rice.instanceMatrix.needsUpdate = true;
     ears.instanceMatrix.needsUpdate = true;
     ears.visible = visibleEars > 0;
@@ -487,6 +544,11 @@ export function createField(scene, quality) {
     else if (t < doyOf(9, 8)) tmp.copy(mudCol.tilled).lerp(mudCol.wet, wl).lerp(mudCol.dry, (1 - wl) * smooth(doyOf(6, 25), doyOf(7, 5), t) * 0.6);
     else tmp.copy(mudCol.wet).lerp(mudCol.dry, smooth(doyOf(9, 8), doyOf(9, 28), t) * 0.8);
     mudMat.color.copy(tmp);
+    // 田起こし期間中はマスクで「耕した所／まだの所」を描き分ける
+    const tillOn = t >= doyOf(4, 15) && t < doyOf(4, 27);
+    mudU.uTillOn.value = tillOn ? 1 : 0;
+    if (tillOn) mudMat.color.setRGB(1, 1, 1);
+    water.material.uniforms.uLevelOn.value = t >= doyOf(4, 28) && t < doyOf(5, 12) ? 1 : 0;
     mudMat.normalScale.setScalar(0.6 * (1 - sc * 0.9));
     // 水面
     water.visible = wl > 0.02;
@@ -556,8 +618,36 @@ export function createField(scene, quality) {
     }
     return out;
   }
+  // ---- 田植え：線分の近くの株を植える ----
+  function plantAlong(ax, az, bx, bz, r, t) {
+    const out = [];
+    const minX = Math.min(ax, bx) - r, maxX = Math.max(ax, bx) + r, minZ = Math.min(az, bz) - r, maxZ = Math.max(az, bz) + r;
+    const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1e-6;
+    for (let p = 0; p < COLS * ROWS; p++) {
+      const R = paddyRect(p);
+      if (maxX < R.x || minX > R.x + R.w || maxZ < R.z || minZ > R.z + R.d) continue;
+      const j0 = Math.max(0, Math.floor((minX - R.x - 0.2) / HILL_X)), j1 = Math.min(NX - 1, Math.ceil((maxX - R.x - 0.2) / HILL_X));
+      const i0 = Math.max(0, Math.floor((minZ - R.z - 0.25) / ROW_Z)), i1 = Math.min(NZ - 1, Math.ceil((maxZ - R.z - 0.25) / ROW_Z));
+      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+        const idx = p * PER_PADDY + i * NX + j;
+        if (planted[idx]) continue;
+        const px = hx[idx] - ax, pz = hz[idx] - az, s2 = clamp((px * dx + pz * dz) / L2), ex = px - dx * s2, ez = pz - dz * s2;
+        if (ex * ex + ez * ez <= r * r) { planted[idx] = 1; out.push(idx); }
+      }
+    }
+    if (out.length) {
+      const g = riceGrowth(t);
+      for (const idx of out) setHill(idx, g, t, false);
+      rice.instanceMatrix.needsUpdate = true; ears.instanceMatrix.needsUpdate = true;
+      rice.visible = true;
+    }
+    return out;
+  }
+  const countPlanted = () => { let n = 0; for (let i = 0; i < TOTAL; i++) if (planted[i]) n++; return n; };
+
+  function cutRemaining() { let n = 0; for (let i = 0; i < TOTAL; i++) if (!cut[i]) { cut[i] = 1; n++; } lastLayoutKey = ''; return n; }
   function lodgeRemaining() { let n = 0; for (let i = 0; i < TOTAL; i++) if (!cut[i]) { cut[i] = 2; n++; } lastLayoutKey = ''; return n; }
-  function resetYear() { cut.fill(0); lastLayoutKey = ''; }
+  function resetYear() { cut.fill(0); planted.fill(0); fillMask(till, 0); fillMask(level, 0); lastLayoutKey = ''; }
   function serialize() {
     let s = ''; for (let i = 0; i < TOTAL; i += 4) s += String.fromCharCode(65 + (cut[i] | ((cut[i + 1] || 0) << 2)), 65 + ((cut[i + 2] || 0) | ((cut[i + 3] || 0) << 2)));
     return s;
@@ -570,6 +660,15 @@ export function createField(scene, quality) {
       if (i + 2 < TOTAL) cut[i + 2] = b & 3; if (i + 3 < TOTAL) cut[i + 3] = (b >> 2) & 3;
     }
     lastLayoutKey = '';
+  }
+
+  const pack = (arr) => { let s2 = ''; for (let i = 0; i < arr.length; i += 6) { let v = 0; for (let k = 0; k < 6; k++) if (arr[i + k]) v |= 1 << k; s2 += String.fromCharCode(48 + v); } return s2; };
+  const unpack = (str, arr, on = 1) => { if (!str) return; for (let i = 0, c = 0; i < arr.length; i += 6, c++) { const v = str.charCodeAt(c) - 48; for (let k = 0; k < 6 && i + k < arr.length; k++) arr[i + k] = (v >> k) & 1 ? on : 0; } };
+  function serializeWork() { return { planted: pack(planted), till: pack(till.a), level: pack(level.a) }; }
+  function deserializeWork(w) {
+    if (!w) return;
+    unpack(w.planted, planted); unpack(w.till, till.a, 255); unpack(w.level, level.a, 255);
+    till.t.needsUpdate = level.t.needsUpdate = true; lastLayoutKey = '';
   }
 
   function tick(time, wind, windDir, sunDir, camera) {
@@ -589,7 +688,11 @@ export function createField(scene, quality) {
   }
 
   return {
-    group, update, tick, cutAlong, lodgeRemaining, resetYear, countCut, serialize, deserialize, setQualityGeo,
-    water, cut, hx, hz, isHarvestable: (t) => t >= HARVEST_START && t < HARVEST_END,
+    group, update, tick, cutAlong, cutRemaining, lodgeRemaining, resetYear, countCut, serialize, deserialize, setQualityGeo,
+    plantAlong, countPlanted, serializeWork, deserializeWork,
+    tillAlong: (ax, az, bx, bz, r) => paint(till, ax, az, bx, bz, r), levelAlong: (ax, az, bx, bz, r) => paint(level, ax, az, bx, bz, r),
+    tillRatio: () => maskRatio(till), levelRatio: () => maskRatio(level), fillTill: () => fillMask(till, 255), fillLevel: () => fillMask(level, 255),
+    paddyRect, inPaddy(x, z) { for (let p = 0; p < COLS * ROWS; p++) { const r = paddyRect(p); if (x > r.x && x < r.x + r.w && z > r.z && z < r.z + r.d) return true; } return false; },
+    water, cut, planted, hx, hz, isHarvestable: (t) => t >= HARVEST_START && t < HARVEST_END,
   };
 }

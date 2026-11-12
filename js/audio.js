@@ -262,6 +262,18 @@ export function createAudio() {
 
   return {
     init, update, swish, chime, yuyake, train,
+    // スズメが飛び立つ羽音
+    flutter() {
+      if (!enabled) return;
+      const t0 = ctx.currentTime;
+      for (let k = 0; k < 10; k++) {
+        const s2 = ctx.createBufferSource(); s2.buffer = noiseBuffer(0.06);
+        const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1400 + Math.random() * 900; bp.Q.value = 1;
+        const g = ctx.createGain(); env(g, t0 + k * 0.035 + Math.random() * 0.02, 0.005, 0.05, 0.12);
+        s2.connect(bp).connect(g).connect(master); s2.start(t0 + k * 0.035);
+      }
+      bird(t0 + 0.1); bird(t0 + 0.25);
+    },
     get enabled() { return enabled; },
     toggle() {
       if (!ctx) { init(); return true; }

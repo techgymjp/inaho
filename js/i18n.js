@@ -27,6 +27,7 @@ const EN = {
   'howto.4': 'Cut between Sep 28 and Oct 8 for first-grade rice. Rice left too long falls over.',
   'howto.5': 'Farm-work timing follows typical dates in the Aizu region of Fukushima.',
   'howto.6': 'A local train runs along the distant line. At dusk the town chime plays "Going Home".',
+  'howto.7': 'Farm work events through the year — tilling, puddling, planting, weeding, stink-bug control and shooing sparrows — are all done by swiping the paddies. How well you do changes the harvest.',
   'menu.reset': 'Start over', 'menu.close': 'Close', 'menu.lang': '日本語に切り替え',
   'result.title': "This year's harvest", 'result.back': 'Back to the paddies',
   'harvest.cut': 'Harvested', 'harvest.hint': 'Swipe across the rice to cut it',
@@ -53,6 +54,7 @@ const JA = {
   'howto.4': '9月28日〜10月8日に刈ると一等米。遅れると稲が倒れてしまいます。',
   'howto.5': '農作業の時期は会津地方の一般的な目安をもとにしています。',
   'howto.6': '遠くの線路をローカル線が走ります。夕方には「家路」のチャイムが鳴ります。',
+  'howto.7': '一年を通して、田起こし・代かき・田植え・除草・カメムシ防除・スズメ追いの農作業イベントがあります。どれも田んぼをなぞって行い、出来ばえが収穫に響きます。',
   'menu.reset': '最初からやり直す', 'menu.close': '閉じる', 'menu.lang': 'Switch to English',
   'result.title': '今年の収穫', 'result.back': '田んぼへ戻る',
   'harvest.cut': '刈り取り', 'harvest.hint': '田んぼの稲を指でなぞって刈り取る',
@@ -135,6 +137,45 @@ export const msg = {
     ${lostPct ? `<p class="warn">${lostPct}% of the rice was left too long and fell over.</p>` : ''}
     <p class="note">The cut rice is hung on hazagake racks to dry in the sun.</p>`,
 };
+
+// ---- 農作業イベント ----
+const J = LANG === 'ja';
+const WORK = {
+  till: J ? ['田起こし', '田んぼをなぞって耕す', 'よく耕すほど収量が増えます'] : ['Tilling', 'Swipe the paddies to till', 'More tilling, bigger harvest'],
+  level: J ? ['代かき', '水を張った田んぼをなぞって平らにする', 'デコボコが残ると苗の育ちがそろいません'] : ['Puddling', 'Swipe the flooded paddies to level them', 'Bumpy paddies grow uneven rice'],
+  plant: J ? ['田植え', '田んぼをなぞって苗を植える', '植え残しは後で手伝いが植えます（収量−15%）'] : ['Planting', 'Swipe along the paddies to plant seedlings', 'Unplanted rows get planted late (−15% yield)'],
+  weed: J ? ['除草', '雑草（ヒエ）をなぞって抜く', '残った雑草は稲の栄養を奪います'] : ['Weeding', 'Swipe the weeds to pull them', 'Weeds left behind steal nutrients'],
+  bug: J ? ['カメムシ防除', 'カメムシをなぞって捕まえる', '放っておくとお米に斑点がついて等級が下がります'] : ['Stink-bug control', 'Swipe the stink bugs to catch them', 'Bugs left alone spot the grain and lower the grade'],
+  bird: J ? ['スズメ追い', 'スズメの群れをなぞって追い払う', 'スズメは実った稲をついばみます'] : ['Shooing sparrows', 'Swipe the flock to shoo the sparrows', 'Sparrows peck at the ripe rice'],
+};
+const daysLeft = (ev, t) => Math.max(0, Math.ceil(ev.end - t));
+Object.assign(msg, {
+  workStart: (id) => `<b>${WORK[id][0]}${J ? 'の時期です' : ''}</b><br>${WORK[id][1]}${J ? '。' : '.'}<br>${WORK[id][2]}`,
+  birdLine: (p) => J ? `スズメ ${p.live}群（被害 ${p.lost.toFixed(1)}kg）` : `Sparrows: ${p.live} flock(s), lost ${p.lost.toFixed(1)} kg`,
+  work: (id, p, t, ev) => {
+    const [label, hint, sub] = WORK[id];
+    const left = J ? `あと${daysLeft(ev, t)}日` : `${daysLeft(ev, t)} days left`;
+    if (id === 'till' || id === 'level' || id === 'plant') {
+      return { label, value: Math.floor(p * 100) + '%', ratio: p, right: left, sub, hint };
+    }
+    if (id === 'weed') return { label, value: J ? `${p.pulled}本` : `${p.pulled}`, ratio: p.shown ? p.pulled / p.shown : 0, right: left, sub: (J ? `生えている雑草 ${p.shown - p.pulled}本　` : `Weeds growing: ${p.shown - p.pulled}　`) + sub, hint };
+    if (id === 'bug') return { label, value: J ? `${p.caught}匹` : `${p.caught}`, ratio: Math.min(1, p.caught / Math.max(1, p.caught + p.live)), right: left, sub: (J ? `いま ${p.live}匹　` : `Now: ${p.live}　`) + sub, hint };
+    return { label, value: J ? `${p.live}群` : `${p.live}`, ratio: 0, right: J ? `被害 ${p.lost.toFixed(1)}kg` : `Lost ${p.lost.toFixed(1)} kg`, sub, hint };
+  },
+  workSummary: (r, F, birdLoss, W) => {
+    const pc = (x) => x == null ? '—' : Math.round(x * 100) + '%';
+    const mul = (f) => f === 1 ? '' : ` <small>(${J ? '収量' : 'yield'} ×${f.toFixed(2)})</small>`;
+    const rows = [
+      [WORK.till[0], pc(r.till) + (r.till == null ? '' : mul(F.tillF))],
+      [WORK.level[0], pc(r.level) + (r.level == null ? '' : mul(F.levelF))],
+      [WORK.plant[0], r.plant ? (J ? `自分で ${pc(r.plant.self / r.plant.total)}` : `by you ${pc(r.plant.self / r.plant.total)}`) + mul(F.plantF) : '—'],
+      [WORK.weed[0], !r.skipped?.weed && (r.weed.done || r.weed.pulled) ? (J ? `${r.weed.pulled}/${W}本` : `${r.weed.pulled}/${W}`) + mul(F.weedF) : '—'],
+      [WORK.bug[0], r.bug.spawned ? (J ? `${r.bug.caught}/${r.bug.spawned}匹` : `${r.bug.caught}/${r.bug.spawned}`) + (F.bugQ < 1 ? ` <small>(${J ? '品質' : 'quality'} ×${F.bugQ.toFixed(2)})</small>` : '') : '—'],
+      [WORK.bird[0], r.bird.shooed || birdLoss ? (J ? `被害 ${birdLoss.toFixed(1)}kg` : `lost ${birdLoss.toFixed(1)} kg`) : '—'],
+    ];
+    return `<h3 class="workTitle">${J ? '今年の農作業' : "This year's farm work"}</h3>` + rows.map(([a, b]) => `<div class="row"><span>${a}</span><b>${b}</b></div>`).join('');
+  },
+});
 
 // HTML の data-i18n を差し替え
 export function applyStatic() {

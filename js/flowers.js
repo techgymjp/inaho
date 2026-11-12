@@ -197,6 +197,44 @@ export function createFlowers(scene) {
     } });
   }
 
+  // ---------- 柿の木（秋に橙色の実がなる。葉が落ちても実は残る） ----------
+  {
+    const trees = [[-56, 16], [-48, -2], [-60, -26], [-22, -37], [30, -38], [-8, RAIL_Z + 18], [62, RAIL_Z + 20], [6, -318], [46, -322]];
+    const trunkGeo = mergeGeos([
+      new THREE.CylinderGeometry(0.2, 0.32, 2.2, 6).translate(0, 1.1, 0),
+      new THREE.CylinderGeometry(0.08, 0.16, 2.6, 5).rotateZ(0.65).translate(0.8, 2.8, 0),
+      new THREE.CylinderGeometry(0.08, 0.16, 2.6, 5).rotateZ(-0.6).translate(-0.8, 2.9, 0.2),
+      new THREE.CylinderGeometry(0.07, 0.14, 2.4, 5).rotateX(0.6).translate(0, 3.0, 0.7),
+    ]);
+    const trunks = inst(trunkGeo, toon({ color: '#3b2f28' }), trees, (o, [x, z]) => { o.position.set(x, terrainHeight(x, z), z); o.rotation.y = N.rnd() * 6; o.scale.setScalar(1.15); });
+    const puffs = [], fruits = [];
+    trees.forEach(([x, z]) => {
+      const y0 = terrainHeight(x, z);
+      for (let k = 0; k < 7; k++) puffs.push([x + (N.rnd() - 0.5) * 4.2, y0 + 3.6 + N.rnd() * 2.0, z + (N.rnd() - 0.5) * 4.2]);
+      for (let k = 0; k < 45; k++) {
+        const a = N.rnd() * Math.PI * 2, r = 1.2 + N.rnd() * 1.6;
+        fruits.push([x + Math.cos(a) * r, y0 + 2.6 + N.rnd() * 3.0, z + Math.sin(a) * r]);
+      }
+    });
+    const leafMat = toon({ color: '#2f6e2c' });
+    const crowns = inst(new THREE.IcosahedronGeometry(1.35, 1), leafMat, puffs, (o, [x, y, z]) => { o.position.set(x, y, z); o.scale.set(1.1, 0.8, 1.1); });
+    const fruitMat = toon({ color: '#e8761c' });
+    const kaki = inst(new THREE.SphereGeometry(0.17, 8, 6).scale(1, 0.85, 1), fruitMat, fruits, (o, [x, y, z]) => { o.position.set(x, y, z); o.scale.setScalar(0.85 + N.rnd() * 0.35); });
+    group.add(trunks, crowns, kaki);
+    const sCrown = scaler(crowns);
+    const green = hex('#2f6e2c'), fresh = hex('#8cc34e'), red = hex('#d0562a'), unripe = hex('#7f9a3a'), ripe = hex('#ee7a18');
+    items.push({ update(t) {
+      const leafy = smooth(D(4, 25), D(5, 15), t) * (1 - smooth(D(11, 8), D(11, 22), t));
+      const ko = smooth(D(10, 18), D(11, 5), t);
+      leafMat.color.copy(green).lerp(fresh, bloom(t, D(4, 28), D(5, 8), D(5, 25), D(6, 10))).lerp(red, ko);
+      crowns.visible = leafy > 0.05; sCrown(0.5 + 0.5 * leafy);
+      // 実：夏の終わりに青い実、10月に色づき、12月半ばまで枝に残る
+      const has = smooth(D(8, 5), D(8, 25), t) * (1 - smooth(D(12, 10), D(12, 20), t));
+      kaki.visible = has > 0.05;
+      fruitMat.color.copy(unripe).lerp(ripe, smooth(D(9, 25), D(10, 20), t));
+    } });
+  }
+
   group.children.forEach(m => { m.frustumCulled = false; });
   return { group, update(t) { for (const it of items) it.update(t); } };
 }

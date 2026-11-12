@@ -50,7 +50,7 @@ button { font: inherit; color: inherit; }
 #hFill { height: 100%; width: 0; background: linear-gradient(90deg, #c9a03c, #f0d77a); transition: width .2s; }
 #hGrade { color: var(--ink-dim); }
 #btnHarvestView { border: 0; border-radius: 14px; padding: 5px 12px; background: var(--gold); color: #2a2208; font-weight: 700; cursor: pointer; }
-#swipeHint { position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 2;
+#swipeHint { position: fixed; left: 50%; bottom: calc(70px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 2;
   padding: 8px 16px; border-radius: 20px; background: rgba(0,0,0,.45); font-size: 14px; white-space: nowrap; opacity: 0; transition: opacity .5s; pointer-events: none; }
 body.harvest-season #swipeHint { opacity: 1; animation: hint 2.4s ease-in-out infinite; }
 @keyframes hint { 0%, 100% { opacity: .95; } 50% { opacity: .5; } }
@@ -102,3 +102,5 @@ h1 span { color: var(--gold); font-size: .82em; letter-spacing: .02em; margin: 0
 body.title #hud, body.title #stageCard, body.title #controls, body.title #yearTrack, body.title #harvestPanel, body.title #toast { display: none; }
 #harvestPanel.show { pointer-events: none; }
 body.harvest-season #stageCard { display: none; }
+.workTitle { font-family: var(--serif); font-size: 15px; margin: 16px 0 4px; }
+#resultBody .row small { color: var(--ink-dim); font-weight: 400; }

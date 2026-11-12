@@ -3,6 +3,7 @@ import { createLandscape } from './landscape.js';
 import { createField, FIELD_W, FIELD_D, TOTAL, KG_PER_HILL } from './field.js';
 import { createEffects } from './effects.js';
 import { createFlowers } from './flowers.js';
+import { createFarmwork } from './farmwork.js';
 import { createAudio } from './audio.js';
 import { LANG, setLang, t as tr, msg, stageText, sekkiText, fmtDate, fmtMonthDay, applyStatic } from './i18n.js';
 import {
@@ -34,6 +35,7 @@ const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.15, 6
 const land = createLandscape(scene, renderer, Q);
 const field = createField(scene, Q);
 const fx = createEffects(scene);
+const farm = createFarmwork({ scene, field, fx, audio: { flutter: () => audio.flutter && audio.flutter() } });
 const flowers = createFlowers(scene);
 const audio = createAudio();
 
@@ -51,7 +53,7 @@ function save() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       year: state.year, t: state.t, speed: state.speed, harvestKg: state.harvestKg, harvestQ: state.harvestQ,
-      finalized: state.finalized, records: state.records, cut: field.serialize(), view: state.view, harvestPrompted: state.harvestPrompted,
+      finalized: state.finalized, records: state.records, cut: field.serialize(), work: field.serializeWork(), farm: farm.serialize(), view: state.view, harvestPrompted: state.harvestPrompted,
       calYear: state.calYear,
     }));
   } catch (e) { /* 保存できない環境 */ }
@@ -186,17 +188,33 @@ function updateHUD(tg) {
     ui.note.textContent = st.note;
     if (!first) toast(`<b>${st.name}</b><br>${st.note}`);
   }
-  // 稲刈りパネル
+  // 作業パネル（稲刈り、またはその時期の農作業）
   const inHarvest = field.isHarvestable(state.t) && !state.finalized;
-  ui.harvest.classList.toggle('show', inHarvest);
-  const n = field.countCutCached;
-  const pct = n / TOTAL * 100;
-  ui.hPct.textContent = pct.toFixed(0) + '%';
-  ui.hFill.style.width = pct + '%';
-  ui.hKg.textContent = msg.kg(state.harvestKg);
-  const q = harvestQuality(state.t);
-  ui.hGrade.textContent = inHarvest ? msg.gradeNow(grade(q)) : '';
-  document.body.classList.toggle('harvest-season', inHarvest);
+  const evs = state.started ? farm.active(state.t % 365) : [];
+  const work = evs.filter(e => e.id !== 'bird');
+  const bird = evs.find(e => e.id === 'bird');
+  const show = inHarvest || evs.length > 0;
+  ui.harvest.classList.toggle('show', show);
+  document.body.classList.toggle('harvest-season', show);
+  if (inHarvest) {
+    const pct = field.countCutCached / TOTAL * 100;
+    $('hLabel').textContent = tr('harvest.cut');
+    ui.hPct.textContent = Math.floor(pct) + '%';
+    ui.hFill.style.width = pct + '%';
+    ui.hKg.textContent = msg.kg(state.harvestKg);
+    ui.hGrade.textContent = msg.gradeNow(grade(harvestQuality(state.t) * farm.factors().bugQ)) + (bird ? '　' + msg.birdLine(farm.progress('bird')) : '');
+    $('swipeHint').textContent = tr('harvest.hint');
+  } else if (work.length || bird) {
+    const ev = work[0] || bird;
+    const p = farm.progress(ev.id, state.t % 365);
+    const info = msg.work(ev.id, p, state.t % 365, ev);
+    $('hLabel').textContent = info.label;
+    ui.hPct.textContent = info.value;
+    ui.hFill.style.width = (info.ratio * 100).toFixed(1) + '%';
+    ui.hKg.textContent = info.right;
+    ui.hGrade.textContent = info.sub;
+    $('swipeHint').textContent = info.hint;
+  }
 }
 
 // ---------- 刈り取り（スワイプ） ----------
@@ -212,27 +230,41 @@ function groundPoint(e) {
   return ray.ray.intersectPlane(cutPlane, p) ? p : null;
 }
 let lastSwish = 0;
+// 遠くの稲ほど指の太さが広い範囲に当たる
+const swipeRadius = (b) => clamp(camera.position.distanceTo(b) * 0.045, 0.9, 3);
+function doWork(a, b) {
+  const n = farm.swipe(a, b, swipeRadius(b), state.t % 365);
+  const now = performance.now();
+  if (n && now - lastSwish > 90) { audio.swish(Math.min(0.8, n / 25 + 0.3)); lastSwish = now; if (navigator.vibrate) navigator.vibrate(6); }
+}
 function doCut(a, b) {
   if (!field.isHarvestable(state.t) || state.finalized) return;
-  // 遠くの稲ほど指の太さが広い範囲に当たる
-  const r = clamp(camera.position.distanceTo(b) * 0.045, 0.9, 3);
+  const r = swipeRadius(b);
   const ids = field.cutAlong(a.x, a.z, b.x, b.z, r);
   if (!ids.length) return;
-  const q = harvestQuality(state.t);
-  state.harvestKg += ids.length * KG_PER_HILL * q;
+  const F = farm.factors();
+  const q = harvestQuality(state.t) * F.bugQ;
+  state.harvestKg += ids.length * KG_PER_HILL * harvestQuality(state.t) * F.yieldF;
   state.harvestQ = (state.harvestQ * (field.countCutCached) + q * ids.length) / (field.countCutCached + ids.length);
   field.countCutCached += ids.length;
   for (let i = 0; i < ids.length; i += 3) fx.burst(field.hx[ids[i]], field.hz[ids[i]], 2);
   const now = performance.now();
   if (now - lastSwish > 70) { audio.swish(Math.min(1, ids.length / 20 + 0.4)); lastSwish = now; if (navigator.vibrate) navigator.vibrate(8); }
-  if (field.countCutCached >= TOTAL) finalizeHarvest(false);
+  // ほぼ刈り終えたら（畦ぎわの取り残し数株は手刈りしたことにして）収穫完了
+  if (field.countCutCached >= TOTAL * 0.995) {
+    const rest = field.cutRemaining();
+    if (rest) { const q2 = harvestQuality(state.t); state.harvestKg += rest * KG_PER_HILL * q2 * farm.factors().yieldF; field.countCutCached += rest; }
+    finalizeHarvest(false);
+  }
 }
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
   const g = groundPoint(e);
   // 稲刈りの期間に田んぼの上から始めたスワイプは「刈り取り」、それ以外は見回し
   const onField = g && Math.abs(g.x) < FIELD_W / 2 && Math.abs(g.z) < FIELD_D / 2;
-  const cutting = !!(onField && field.isHarvestable(state.t) && !state.finalized);
+  const harvesting = !!(field.isHarvestable(state.t) && !state.finalized);
+  const working = state.started && farm.active(state.t % 365).length > 0;
+  const cutting = !!(onField && (harvesting || working));
   pointer = { id: e.pointerId, x: e.clientX, y: e.clientY, g, cutting };
   if (cutting) trail.push({ x: e.clientX, y: e.clientY, t: performance.now() });
 });
@@ -244,7 +276,7 @@ canvas.addEventListener('pointermove', (e) => {
       // 細かく分割して取りこぼしを防ぐ
       const steps = Math.ceil(pointer.g.distanceTo(g) / 0.5);
       let prev = pointer.g;
-      for (let s = 1; s <= steps; s++) { const p = pointer.g.clone().lerp(g, s / steps); doCut(prev, p); prev = p; }
+      for (let s = 1; s <= steps; s++) { const p = pointer.g.clone().lerp(g, s / steps); doCut(prev, p); doWork(prev, p); prev = p; }
     }
     pointer.g = g;
     trail.push({ x: e.clientX, y: e.clientY, t: performance.now() });
@@ -286,8 +318,11 @@ function finalizeHarvest(late) {
   let lost = 0;
   if (late) lost = field.lodgeRemaining();
   field.update(state.t, true);
+  const birdLoss = Math.min(state.harvestKg * 0.5, farm.rec.bird.lostKg);
+  state.harvestKg = Math.max(0, state.harvestKg - birdLoss);
   const kg = state.harvestKg;
   const rec = { year: state.year, kg: Math.round(kg), grade: kg > 0 ? grade(state.harvestQ) : '—', rate: Math.round(field.countCutCached / TOTAL * 100) };
+  rec.work = msg.workSummary(farm.rec, farm.factors(), birdLoss, farm.WEEDS);
   state.records = state.records.filter(r => r.year !== state.year).concat(rec);
   audio.chime();
   showResult(rec, lost);
@@ -295,7 +330,7 @@ function finalizeHarvest(late) {
 }
 function showResult(rec, lost) {
   const bowls = Math.round(rec.kg * 0.9 * 1000 / 65); // 精米歩留まり90%、ごはん1杯=精米65g
-  $('resultBody').innerHTML = msg.result(rec, bowls, lost ? Math.round(lost / TOTAL * 100) : 0);
+  $('resultBody').innerHTML = msg.result(rec, bowls, lost ? Math.round(lost / TOTAL * 100) : 0) + (rec.work || '');
   $('result').classList.add('show');
 }
 
@@ -309,7 +344,7 @@ function newYear() {
   state.year++;
   state.calYear = (state.calYear || 2026) + 1;
   state.harvestKg = 0; state.harvestQ = 0; state.finalized = false; state.harvestPrompted = false;
-  field.resetYear(); field.countCutCached = 0;
+  field.resetYear(); field.countCutCached = 0; farm.reset();
   field.update(state.t, true);
   const last = state.records[state.records.length - 1];
   toast(msg.newYear(state.year, last), 8);
@@ -333,11 +368,26 @@ function frame(now) {
       }
     }
     if (state.t >= HARVEST_END && state.t < 365 && !state.finalized) finalizeHarvest(true);
+    // 保存データなどで刈り取りがほぼ終わっているのに完了していない場合
+    if (!state.finalized && field.isHarvestable(state.t) && field.countCutCached >= TOTAL * 0.995) {
+      const rest = field.cutRemaining();
+      if (rest) { state.harvestKg += rest * KG_PER_HILL * harvestQuality(state.t); field.countCutCached += rest; }
+      finalizeHarvest(false);
+    }
     if (state.t >= 365) newYear();
   }
   const t = state.t;
   const day = Math.floor(t);
   tg = updateWeather(gdt);
+  {
+    const fr = farm.update(dt, t % 365, time, { running: state.started && !state.paused, harvestDone: state.finalized });
+    if (state.started) for (const ev of fr.started) {
+      if (ev.id === 'bird' && state.finalized) continue;
+      if (state.speed > 1) setSpeed(1);
+      toast(msg.workStart(ev.id), 9);
+      audio.chime();
+    }
+  }
 
   // 季節更新（重いので間引く）
   seasonTimer -= dt;
@@ -394,7 +444,7 @@ function startGame(opt) {
   const now = new Date();
   if (saved) {
     Object.assign(state, { year: saved.year, t: saved.t, harvestKg: saved.harvestKg, harvestQ: saved.harvestQ || 0, finalized: saved.finalized, records: saved.records || [], harvestPrompted: !!saved.harvestPrompted, calYear: saved.calYear || now.getFullYear() });
-    field.deserialize(saved.cut);
+    field.deserialize(saved.cut); field.deserializeWork(saved.work); farm.reset(); farm.deserialize(saved.farm); farm.skipPast(saved.t % 365);
     setSpeed(saved.speed || 1);
     setView(VIEWS[saved.view] ? saved.view : 'aze', true);
   } else {
@@ -405,7 +455,7 @@ function startGame(opt) {
     state.t = starts[opt] ?? starts.spring;
     state.calYear = now.getFullYear();
     state.year = 1; state.records = []; state.harvestKg = 0; state.harvestQ = 0;
-    field.resetYear();
+    field.resetYear(); farm.reset(); farm.skipPast(state.t % 365);
     // 稲刈り期間を過ぎてから始めた場合は刈り取り済みの田んぼにする
     state.finalized = state.t >= HARVEST_END && state.t >= PLANT_START;
     state.harvestPrompted = state.t >= HARVEST_START;
@@ -494,7 +544,7 @@ land.updateSeason(state.t); flowers.update(state.t % 365);
 state.t = doyOf(5, 19) + 16.9 / 24; // 水鏡の夕方
 if (!MANUAL) requestAnimationFrame(frame);
 window.__suiden = {
-  state, field, setView, setSpeed, startGame, wx, land, scene, camera, renderer,
+  state, field, setView, setSpeed, startGame, wx, land, scene, camera, renderer, farm,
   step(n = 1, dtMs = 1000 / 30) { for (let i = 0; i < n; i++) frame(lastT + dtMs); },
   refresh() { land.updateSeason(state.t); flowers.update(state.t % 365); field.update(state.t, true); updateWeather(0, true); hudTimer = 0; lastSeasonDay = Math.floor(state.t); },
 };
