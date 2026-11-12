@@ -158,7 +158,7 @@ const $ = (id) => document.getElementById(id);
 const ui = {
   year: $('hudYear'), date: $('hudDate'), time: $('hudTime'), sub: $('hudSub'), stage: $('stageName'), note: $('stageNote'),
   bar: $('yearBar'), harvest: $('harvestPanel'), hPct: $('hPct'), hFill: $('hFill'), hKg: $('hKg'), hGrade: $('hGrade'),
-  toast: $('toast'), speed: $('btnSpeed'), pause: $('btnPause'), sound: $('btnSound'),
+  toast: $('toast'), pause: $('btnPause'), sound: $('btnSound'),
 };
 let toastTimer = 0;
 function toast(html, sec = 6) {
@@ -168,9 +168,8 @@ function toast(html, sec = 6) {
   toastTimer = sec;
 }
 function setSpeed(s) {
+  // プレイ中は常に1倍速。動作確認用にだけ内部で変更できる
   state.speed = s;
-  ui.speed.textContent = '×' + s;
-  ui.speed.title = msg.speedTitle(s);
 }
 function updateHUD(tg) {
   const d = Math.floor(state.t) % 365;
@@ -450,7 +449,7 @@ function frame(now) {
     const len = Math.hypot(dx, dz) || 1;
     audio.train(rw.x, len, (dx * right.x + dz * right.z) / len, rw.running && !state.paused, rw.SPEED);
   }
-  // 夕方のチャイム（4〜9月は18時、それ以外は17時）。早送りが速いときは鳴らさない
+  // 夕方のチャイム（4〜9月は18時、それ以外は17時）
   if (state.started && !state.paused && state.speed <= 10) {
     const { month } = monthDay(Math.floor(t) % 365);
     const ch = (month >= 4 && month <= 9 ? 18 : 17) / 24;
@@ -478,7 +477,7 @@ function startGame(opt) {
   if (saved) {
     Object.assign(state, { year: saved.year, t: saved.t, harvestKg: saved.harvestKg, harvestQ: saved.harvestQ || 0, finalized: saved.finalized, records: saved.records || [], harvestPrompted: !!saved.harvestPrompted, calYear: saved.calYear || now.getFullYear() });
     field.deserialize(saved.cut); field.deserializeWork(saved.work); farm.reset(); farm.deserialize(saved.farm); farm.skipPast(saved.t % 365);
-    setSpeed(saved.speed || 1);
+    setSpeed(1);
     setView(VIEWS[saved.view] ? saved.view : 'aze', true);
   } else {
     const starts = {
@@ -519,12 +518,7 @@ function startGame(opt) {
 
 // ボタン
 $('btnPause').onclick = () => { state.paused = !state.paused; ui.pause.textContent = state.paused ? '▶' : '❚❚'; };
-$('btnSpeed').onclick = () => {
-  if (((field.isHarvestable(state.t) && !state.finalized) || farm.active(state.t % 365).length) && state.speed === 1) {
-    if (!confirm(msg.confirmFast())) return;
-  }
-  setSpeed(SPEEDS[(SPEEDS.indexOf(state.speed) + 1) % SPEEDS.length]);
-};
+// 再生スピードは常に等速（プレイ画面では変更できない）
 $('btnView').onclick = () => {
   const order = VIEW_ORDER;
   const i = order.indexOf(state.view);
@@ -565,7 +559,6 @@ if (load()) {
 addEventListener('keydown', (e) => {
   if (e.key === ' ') $('btnPause').click();
   if (e.key === 'v') $('btnView').click();
-  if (e.key === 'f') $('btnSpeed').click();
 });
 addEventListener('visibilitychange', save);
 setInterval(save, 5000);
