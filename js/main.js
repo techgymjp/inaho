@@ -485,7 +485,7 @@ function startGame(opt) {
       today: doyOf(now.getMonth() + 1, Math.min(now.getDate(), 28 + (now.getMonth() === 1 ? 0 : 3))) + 6 / 24,
       spring: doyOf(4, 20) + 5 / 24, harvest: doyOf(9, 19) + 5 / 24, jan: 0 + 6 / 24,
     };
-    state.t = starts[opt] ?? starts.spring;
+    state.t = starts[opt] ?? starts.today;
     state.calYear = now.getFullYear();
     state.year = 1; state.records = []; state.harvestKg = 0; state.harvestQ = 0;
     field.resetYear(); farm.reset(); farm.skipPast(state.t % 365);
@@ -547,12 +547,18 @@ function renderRecords() {
     ? state.records.map(msg.recordRow).join('')
     : `<tr><td colspan="4">${msg.noRecords()}</td></tr>`;
 }
-document.querySelectorAll('[data-start]').forEach(b => (b.onclick = () => startGame(b.dataset.start)));
-if (load()) $('btnContinue').hidden = false;
+document.querySelectorAll('[data-start]').forEach(b => (b.onclick = () => {
+  if (b.dataset.start === 'today' && load() && !confirm(msg.confirmNewGame())) return;
+  startGame(b.dataset.start);
+}));
+if (load()) {
+  // 続きがあるときは「つづきから」を主ボタンに。今日から始め直すときは確認する
+  $('btnContinue').hidden = false;
+  $('btnToday').classList.remove('primary');
+}
 {
   const now = new Date();
   $('todayLabel').textContent = fmtMonthDay(now.getMonth() + 1, now.getDate());
-  $('lblSpring').textContent = fmtMonthDay(4, 20); $('lblHarvest').textContent = fmtMonthDay(9, 19); $('lblJan').textContent = fmtMonthDay(1, 1);
   applyStatic();
   $('btnPause').title = tr('btn.pause');
 }

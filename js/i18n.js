@@ -47,7 +47,7 @@ const JA = {
   'title.pre': '福島・山あいの田んぼより',
   'title.lead': '山に囲まれた田んぼの一年を、<br>一日一分で見守る。',
   'title.lead2': '雪どけ、水張り、田植え、黄金の穂。<br>稲刈りのときだけ、あなたの手で。',
-  'start.continue': 'つづきから', 'start.spring': '田起こしから始める', 'start.today': '今日の日付から',
+  'start.continue': 'つづきから', 'start.spring': '田起こしから始める', 'start.today': '今日の日付から始める',
   'start.harvest': '稲刈りの直前から', 'start.jan': '元日から',
   'start.tiny': '1日およそ1分（昼はゆっくり、夜は速く）。早送りもできます。音が出ます。',
   'menu.records': '収穫の記録', 'menu.howto': 'あそびかた',
@@ -116,6 +116,7 @@ export const msg = {
   view: (label) => LANG === 'ja' ? `視点：${label}` : `View: ${label}`,
   quality: (name) => LANG === 'ja' ? `画質：${name}（切替）` : `Quality: ${name} (switch)`,
   confirmFast: () => LANG === 'ja' ? '稲刈りの期間中です。早送りすると刈り取りの時間が減ります。早送りしますか？' : 'It is harvest time. Fast-forwarding leaves less time to cut the rice. Fast-forward anyway?',
+  confirmNewGame: () => LANG === 'ja' ? 'これまでの続きと記録は消えます。今日の日付から新しく始めますか？' : 'Your saved progress and records will be erased. Start a new game from today?',
   confirmReset: () => LANG === 'ja' ? '記録を消して最初からやり直しますか？' : 'Erase your records and start over?',
   noRecords: () => LANG === 'ja' ? 'まだ収穫の記録はありません' : 'No harvests recorded yet',
   recordRow: (r) => LANG === 'ja'
