@@ -162,10 +162,14 @@ export function weatherOf(doy, year) {
   const r2 = hash(doy * 3571 + year * 2903 + 17);
   const { month } = monthDay(doy);
   // 月別の降水確率（福島・会津のイメージ：冬は雪、梅雨、秋晴れ）
-  const pRain = [0.55, 0.5, 0.4, 0.33, 0.3, 0.48, 0.5, 0.3, 0.38, 0.28, 0.4, 0.55][month - 1];
+  // 月別の降水日の割合（会津若松の平年の降水日数〔12月 約15日・1月 約15日・2月 約14日・3月 約13日、年 約144日〕に合わせた目安）
+  const pRain = [0.49, 0.48, 0.43, 0.33, 0.3, 0.42, 0.47, 0.33, 0.38, 0.32, 0.42, 0.47][month - 1];
   const pCloud = 0.3;
   let kind;
-  if (r < pRain) kind = (month <= 3 || month === 12 || (month === 11 && r2 > 0.6)) ? 'snow' : 'rain';
+  // 冬は雪。3月は下旬ほど雨まじり、11月は下旬ほど雪まじり
+  const { day } = monthDay(doy);
+  const snowy = month <= 2 || month === 12 || (month === 3 && r2 > day / 40) || (month === 11 && r2 < (day - 10) / 30);
+  if (r < pRain) kind = snowy ? 'snow' : 'rain';
   else if (r < pRain + pCloud) kind = 'cloudy';
   else kind = 'clear';
   const strength = 0.4 + 0.6 * r2;
