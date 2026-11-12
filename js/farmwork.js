@@ -2,9 +2,9 @@
 // どれも「いつもの景色のまま、田んぼをなぞる」操作で行う
 import * as THREE from 'three';
 import { makeNoise } from './noise.js';
-import { toon } from './toon.js';
-import { smooth, clamp, doyOf, waterLevel, PLANT_START, PLANT_END, HARVEST_END, PLOW_DAY, riceGrowth } from './calendar.js';
-import { TOTAL, FIELD_W, FIELD_D } from './field.js';
+import { toon, hex } from './toon.js';
+import { smooth, clamp, doyOf, waterLevel, snowCover, PLANT_START, PLANT_END, HARVEST_END, PLOW_DAY, riceGrowth } from './calendar.js';
+import { TOTAL, FIELD_W, FIELD_D, COLS, ROWS, PW, PD, LEVEE } from './field.js';
 
 const D = doyOf;
 const R = makeNoise(9091).rnd;
@@ -16,7 +16,12 @@ export const EVENTS = [
   { id: 'weed', start: D(6, 1), end: D(6, 25) },
   { id: 'bug', start: D(8, 5), end: D(8, 26) },
   { id: 'bird', start: D(9, 8), end: HARVEST_END },
+  // 冬の農作業
+  { id: 'house', start: D(1, 8), end: D(2, 26) },   // ハウスの雪下ろし
+  { id: 'melt', start: D(2, 28), end: D(3, 21) },   // 融雪剤まき
+  { id: 'levee', start: D(11, 25), end: D(12, 8) }, // 畦の補修（来年の水もちに効く）
 ];
+const EV = Object.fromEntries(EVENTS.map(e => [e.id, e]));
 
 function spriteTex(draw, w = 128, h = 128) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -58,7 +63,8 @@ export function createFarmwork({ scene, field, fx, audio }) {
   // ---------- 年ごとの記録 ----------
   const fresh = () => ({
     till: null, level: null, plant: null, weed: { spawned: 0, pulled: 0, done: false }, bug: { spawned: 0, caught: 0, done: false },
-    bird: { lostKg: 0, shooed: 0, done: false }, closed: {}, skipped: {},
+    bird: { lostKg: 0, shooed: 0, done: false }, house: { load: 0, cleared: 0, collapsed: false, warned: false }, melt: null,
+    levee: { fixed: 0, done: false, leak: 0 }, carryLeak: 0, closed: {}, skipped: {},
   });
   let rec = fresh();
   let lastT = null;
@@ -164,6 +170,125 @@ export function createFarmwork({ scene, field, fx, audio }) {
     audio.flutter && audio.flutter();
   }
 
+  // ---------- ビニールハウス（育苗用）：冬は雪下ろしが必要 ----------
+  const HX = 2, HZ = -50, HL = 22, HRAD = 3;
+  const house = new THREE.Group();
+  const film = new THREE.Mesh(new THREE.CylinderGeometry(HRAD, HRAD, HL, 18, 1, true, -Math.PI / 2, Math.PI).rotateZ(Math.PI / 2).rotateX(Math.PI / 2),
+    new THREE.MeshLambertMaterial({ color: 0xe4eef4, transparent: true, opacity: 0.78, side: THREE.DoubleSide, depthWrite: false }));
+  film.rotation.y = Math.PI / 2;
+  const ends = new THREE.Mesh(new THREE.CircleGeometry(HRAD, 18, 0, Math.PI), film.material);
+  const ends2 = ends.clone();
+  ends.position.set(-HL / 2, 0, 0); ends.rotation.y = Math.PI / 2;
+  ends2.position.set(HL / 2, 0, 0); ends2.rotation.y = -Math.PI / 2;
+  house.add(film, ends, ends2);
+  const pipeM = toon({ color: '#9aa0a6' });
+  for (let k = 0; k <= 11; k++) {
+    const hoop = new THREE.Mesh(new THREE.TorusGeometry(HRAD + 0.02, 0.035, 4, 18, Math.PI), pipeM);
+    hoop.rotation.y = Math.PI / 2; hoop.position.x = -HL / 2 + k * HL / 11;
+    house.add(hoop);
+  }
+  // 中の苗箱（4〜5月）
+  const trays = new THREE.Mesh(new THREE.BoxGeometry(HL - 2, 0.25, HRAD * 1.2), toon({ color: '#7cc246' }));
+  trays.position.y = 0.6; house.add(trays);
+  // 屋根の雪
+  const snowCap = new THREE.Mesh(new THREE.CylinderGeometry(HRAD + 0.05, HRAD + 0.05, HL + 0.2, 18, 1, false, -Math.PI / 3.2, Math.PI / 1.6).rotateZ(Math.PI / 2).rotateX(Math.PI / 2),
+    toon({ color: '#f4f8fc' }));
+  snowCap.rotation.y = Math.PI / 2;
+  house.add(snowCap);
+  house.position.set(HX, 0.35, HZ);
+  house.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  group.add(house);
+  const houseBox = new THREE.Box3(new THREE.Vector3(HX - HL / 2 - 0.5, 0, HZ - HRAD - 0.5), new THREE.Vector3(HX + HL / 2 + 0.5, HRAD + 1.2, HZ + HRAD + 0.5));
+  function layoutHouse(t) {
+    const h = rec.house, sc = snowCover(t);
+    const inEv = t >= EV.house.start && t < EV.house.end && !rec.skipped.house;
+    const load = inEv ? h.load : sc * 0.25;
+    snowCap.visible = load > 0.02 && !h.collapsed;
+    snowCap.scale.set(1, 1, 1);
+    snowCap.position.y = load * 0.5;
+    snowCap.scale.setScalar(1 + load * 0.12);
+    // つぶれたハウス（4月まで）
+    const broken = h.collapsed && t < D(4, 1);
+    house.scale.set(1, broken ? 0.35 : 1, 1);
+    house.rotation.z = broken ? 0.05 : 0;
+    trays.visible = t >= D(4, 3) && t < D(5, 20);
+  }
+
+  // ---------- 畦の穴（モグラ穴・崩れ）：初冬に直す ----------
+  const HOLES = 40;
+  const holes = [];
+  for (let i = 0; i < HOLES; i++) {
+    let x, z;
+    if (R() < 0.55) { // 南北の畦
+      const c = Math.floor(R() * (COLS + 1));
+      x = -FIELD_W / 2 + LEVEE / 2 + c * (PW + LEVEE); z = (R() - 0.5) * (FIELD_D - 2);
+    } else {          // 東西の畦
+      const r = Math.floor(R() * (ROWS + 1));
+      z = -FIELD_D / 2 + LEVEE / 2 + r * (PD + LEVEE); x = (R() - 0.5) * (FIELD_W - 2);
+    }
+    holes.push({ x, z, at: R(), fixed: false });
+  }
+  const holeMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.5, 0.4, 0.06, 9), toon({ color: '#24170c' }), HOLES);
+  const rimMesh = new THREE.InstancedMesh(new THREE.TorusGeometry(0.56, 0.12, 4, 9).rotateX(Math.PI / 2), toon({ color: '#c9a46a' }), HOLES);
+  holeMesh.frustumCulled = rimMesh.frustumCulled = false;
+  group.add(holeMesh, rimMesh);
+  function layoutHoles(t) {
+    const prog = clamp((t - EV.levee.start) / (EV.levee.end - EV.levee.start - 2));
+    const show = t >= EV.levee.start && t < EV.levee.end && !rec.skipped.levee;
+    holes.forEach((h, i) => {
+      const vis = show && !h.fixed && h.at <= prog + 1e-6;
+      m4.compose(v.set(h.x, 0.37, h.z), q.identity(), sv.setScalar(vis ? 1 : 1e-4));
+      holeMesh.setMatrixAt(i, m4); rimMesh.setMatrixAt(i, m4);
+    });
+    holeMesh.instanceMatrix.needsUpdate = rimMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  // ---------- 白鳥（冬の田んぼに落ち穂をついばみに来る） ----------
+  const SWANS = 9;
+  const swanGeo = (() => {
+    const parts = [
+      new THREE.SphereGeometry(0.42, 10, 8).scale(1, 0.62, 1.55).translate(0, 0.42, 0),
+      new THREE.CylinderGeometry(0.06, 0.09, 0.75, 6).rotateX(-0.25).translate(0, 0.85, 0.55),
+      new THREE.SphereGeometry(0.11, 8, 6).scale(1, 0.9, 1.4).translate(0, 1.22, 0.68),
+      new THREE.ConeGeometry(0.05, 0.22, 5).rotateX(Math.PI / 2).translate(0, 1.2, 0.86),
+    ].map(g => g.toNonIndexed());
+    let n = 0; parts.forEach(g2 => (n += g2.attributes.position.count));
+    const pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+    let o = 0;
+    parts.forEach((g2, i) => {
+      pos.set(g2.attributes.position.array, o * 3);
+      const c = i === 3 ? [0.95, 0.75, 0.15] : [0.97, 0.97, 0.95];
+      for (let k = 0; k < g2.attributes.position.count; k++) col.set(c, (o + k) * 3);
+      o += g2.attributes.position.count;
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.computeVertexNormals();
+    return g;
+  })();
+  const swanMesh = new THREE.InstancedMesh(swanGeo, toon({ vertexColors: true }), SWANS);
+  swanMesh.frustumCulled = false;
+  group.add(swanMesh);
+  const swans = Array.from({ length: SWANS }, (_, i) => ({ x: -8 + (R() - 0.5) * 22, z: -6 + (R() - 0.5) * 14, ph: R() * 10, dir: R() * 6 }));
+  function layoutSwans(t, time, day) {
+    const season = smooth(D(12, 12), D(12, 20), t) + (1 - smooth(D(3, 5), D(3, 12), t)) * (t < D(6, 1) ? 1 : 0);
+    const on = Math.min(1, season) > 0.5 && day > 0.3 && snowCover(t) > 0.3;
+    swanMesh.visible = on;
+    if (!on) return;
+    swans.forEach((w, i) => {
+      w.dir += Math.sin(time * 0.2 + w.ph) * 0.004;
+      const sp = 0.25 * Math.max(0, Math.sin(time * 0.15 + w.ph));
+      w.x += Math.sin(w.dir) * sp * 0.016; w.z += Math.cos(w.dir) * sp * 0.016;
+      if (Math.abs(w.x) > FIELD_W / 2 - 3 || Math.abs(w.z) > FIELD_D / 2 - 3) w.dir += Math.PI * 0.02;
+      const peck = Math.max(0, Math.sin(time * 0.8 + w.ph * 3)) > 0.6 ? 0.55 : 0;  // 首を下げてついばむ
+      m4.compose(v.set(w.x, 0.05, w.z), q.setFromEuler(new THREE.Euler(peck, w.dir, 0, 'YXZ')), sv.setScalar(1.1));
+      swanMesh.setMatrixAt(i, m4);
+    });
+    swanMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  const events = [];
   // ---------- 進行 ----------
   function close(ev) {
     if (rec.closed[ev.id]) return;
@@ -173,6 +298,9 @@ export function createFarmwork({ scene, field, fx, audio }) {
     if (ev.id === 'plant') { const self = field.countPlanted(); rec.plant = { self, total: TOTAL }; }
     if (ev.id === 'weed') rec.weed.done = true;
     if (ev.id === 'bug') { rec.bug.done = true; bugs.forEach(b => group.remove(b.sp)); bugs.length = 0; }
+    if (ev.id === 'melt') rec.melt = field.meltRatio();
+    if (ev.id === 'house') rec.house.done = true;
+    if (ev.id === 'levee') { rec.levee.done = true; rec.levee.leak = holes.filter(h => !h.fixed).length / HOLES; events.push('leveeDone'); }
     if (ev.id === 'bird') { rec.bird.done = true; flocks.forEach(f => f.birds.forEach(b => group.remove(b.sp))); flocks.length = 0; }
   }
   // 途中から始めたときは、もう過ぎた作業を「影響なし」で閉じる
@@ -188,11 +316,24 @@ export function createFarmwork({ scene, field, fx, audio }) {
 
   function update(dt, t, time, opts) {
     const started = [];
+    events.length = 0;
     if (lastT !== null && t > lastT) for (const ev of EVENTS) if (lastT < ev.start && t >= ev.start) started.push(ev);
     lastT = t;
     for (const ev of EVENTS) if (t >= ev.end && !rec.closed[ev.id] && t < ev.end + 30) close(ev);
     layoutWeeds(t);
     const run = opts.running;
+    // ハウスの雪：雪の日に積もり、重くなりすぎるとつぶれる
+    const houseOn = t >= EV.house.start && t < EV.house.end && !rec.closed.house;
+    if (houseOn && run && !rec.house.collapsed) {
+      const snowing = opts.wx.kind === 'snow' ? opts.wx.precip : 0;
+      rec.house.load += snowing * opts.gdt * 0.16;
+      if (rec.house.load >= 1) { rec.house.collapsed = true; events.push('collapse'); audio.crash && audio.crash(); }
+      else if (rec.house.load > 0.7 && !rec.house.warned) { rec.house.warned = true; events.push('houseWarn'); }
+      if (rec.house.load < 0.5) rec.house.warned = false;
+    }
+    layoutHouse(t);
+    layoutHoles(t);
+    layoutSwans(t, time, opts.day);
 
     // カメムシ：稲の穂の上をふらふら飛ぶ
     const bugOn = t >= EVENTS[4].start && t < EVENTS[4].end && !rec.closed.bug;
@@ -238,7 +379,7 @@ export function createFarmwork({ scene, field, fx, audio }) {
       // 稲刈りが終わったら帰る
       if (f.state === 'in' && opts.harvestDone) shooFlock(f);
     }
-    return { started };
+    return { started, events: events.slice() };
   }
 
   // なぞった線の近くを処理。処理した数を返す
@@ -258,9 +399,26 @@ export function createFarmwork({ scene, field, fx, audio }) {
       const prog = clamp((t - EVENTS[3].start) / (EVENTS[3].end - EVENTS[3].start - 3));
       weeds.forEach(w => { if (!w.pulled && w.at <= prog && near(w.x, w.z, r + 0.4)) { w.pulled = true; rec.weed.pulled++; n++; fx.burst(w.x, w.z, 4); } });
     }
+    if (has('melt') && snowCover(t) > 0.2) n += field.meltAlong(a.x, a.z, b.x, b.z, r * 1.4);
+    if (has('levee')) {
+      const prog = clamp((t - EV.levee.start) / (EV.levee.end - EV.levee.start - 2));
+      holes.forEach(h => { if (!h.fixed && h.at <= prog && near(h.x, h.z, r + 0.5)) { h.fixed = true; rec.levee.fixed++; n++; fx.burst(h.x, h.z, 3); } });
+    }
     for (let i = bugs.length - 1; i >= 0; i--) if (near(bugs[i].x, bugs[i].z, r + 0.6)) { group.remove(bugs[i].sp); bugs.splice(i, 1); rec.bug.caught++; n++; }
     flocks.forEach(f => { if (f.state === 'in' && f.birds.some(bd => near(bd.sp.position.x, bd.sp.position.z, r + 1.5))) { shooFlock(f); n++; } });
     return n;
+  }
+
+  // 画面の光線でハウスをなぞる（雪下ろし）
+  const hitP = new THREE.Vector3();
+  function rayTest(ray, t) { return active(t).some(e => e.id === 'house') && !rec.house.collapsed && !!ray.ray.intersectBox(houseBox, hitP); }
+  function rayHit(ray, t) {
+    if (!rayTest(ray, t)) return 0;
+    if (rec.house.load <= 0.001) return 0;
+    rec.house.load = Math.max(0, rec.house.load - 0.06);
+    rec.house.cleared++;
+    fx.burst(hitP.x, hitP.z + 3.5, 3);
+    return 1;
   }
 
   // ---------- 成績 ----------
@@ -271,7 +429,10 @@ export function createFarmwork({ scene, field, fx, audio }) {
     const plantF = rec.plant == null ? 1 : (rec.plant.self + 0.85 * (rec.plant.total - rec.plant.self)) / rec.plant.total;
     const weedF = !rec.skipped.weed && (rec.weed.done || rec.weed.pulled) ? 1 - 0.12 * weedRemaining() / WEEDS : 1;
     const bugQ = rec.bug.spawned ? 1 - 0.1 * (1 - rec.bug.caught / rec.bug.spawned) : 1;
-    return { tillF, levelF, plantF, weedF, bugQ, yieldF: tillF * levelF * plantF * weedF };
+    const houseF = rec.house.collapsed ? 0.9 : 1;                       // 苗が足りず、買い苗で遅れる
+    const meltF = rec.melt == null ? 1 : 0.98 + 0.05 * rec.melt;          // 雪どけが早いと春の作業が順調
+    const leakF = 1 - 0.06 * (rec.carryLeak || 0);                         // 去年の畦の穴から水がもれる
+    return { tillF, levelF, plantF, weedF, bugQ, houseF, meltF, leakF, yieldF: tillF * levelF * plantF * weedF * houseF * meltF * leakF };
   }
   function progress(id, t) {
     if (id === 'till') return field.tillRatio();
@@ -279,22 +440,30 @@ export function createFarmwork({ scene, field, fx, audio }) {
     if (id === 'plant') return field.countPlanted() / TOTAL;
     if (id === 'weed') { const prog = clamp((t - EVENTS[3].start) / (EVENTS[3].end - EVENTS[3].start - 3)); const sp = weeds.filter(w => w.at <= prog).length; return { pulled: rec.weed.pulled, shown: sp }; }
     if (id === 'bug') return { caught: rec.bug.caught, live: bugs.length };
+    if (id === 'house') return { load: rec.house.load, collapsed: rec.house.collapsed };
+    if (id === 'melt') return field.meltRatio();
+    if (id === 'levee') { const prog = clamp((t - EV.levee.start) / (EV.levee.end - EV.levee.start - 2)); const shown = holes.filter(h => h.at <= prog).length; return { fixed: rec.levee.fixed, shown }; }
     if (id === 'bird') return { lost: rec.bird.lostKg, shooed: rec.bird.shooed, live: flocks.filter(f => f.state === 'in').length };
     return 0;
   }
 
   function reset() {
-    rec = fresh(); weeds.forEach(w => (w.pulled = false));
+    const carry = rec.levee && rec.levee.done ? rec.levee.leak : 0;
+    rec = fresh(); rec.carryLeak = carry;
+    holes.forEach(h => (h.fixed = false)); weeds.forEach(w => (w.pulled = false));
     bugs.forEach(b => group.remove(b.sp)); bugs.length = 0;
     flocks.forEach(f => f.birds.forEach(b => group.remove(b.sp))); flocks.length = 0;
     lastT = null;
   }
-  function serialize() { return { rec, weeds: weeds.map(w => (w.pulled ? 1 : 0)).join('') }; }
+  function serialize() { return { rec, weeds: weeds.map(w => (w.pulled ? 1 : 0)).join(''), holes: holes.map(h => (h.fixed ? 1 : 0)).join('') }; }
   function deserialize(d) {
     if (!d) return;
     rec = Object.assign(fresh(), d.rec || {});
     rec.skipped = rec.skipped || {};
     if (d.weeds) weeds.forEach((w, i) => (w.pulled = d.weeds[i] === '1'));
+    if (d.holes) holes.forEach((h, i) => (h.fixed = d.holes[i] === '1'));
+    rec.house = Object.assign({ load: 0, cleared: 0, collapsed: false, warned: false }, rec.house || {});
+    rec.levee = Object.assign({ fixed: 0, done: false, leak: 0 }, rec.levee || {});
   }
-  return { update, swipe, active, factors, progress, reset, serialize, deserialize, skipPast, get rec() { return rec; }, WEEDS };
+  return { HOLES, update, swipe, rayTest, rayHit, active, factors, progress, reset, serialize, deserialize, skipPast, get rec() { return rec; }, WEEDS };
 }

@@ -35,7 +35,7 @@ const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.15, 6
 const land = createLandscape(scene, renderer, Q);
 const field = createField(scene, Q);
 const fx = createEffects(scene);
-const farm = createFarmwork({ scene, field, fx, audio: { flutter: () => audio.flutter && audio.flutter() } });
+const farm = createFarmwork({ scene, field, fx, audio: { flutter: () => audio.flutter && audio.flutter(), crash: () => audio.crash && audio.crash() } });
 const flowers = createFlowers(scene);
 const audio = createAudio();
 
@@ -264,7 +264,8 @@ canvas.addEventListener('pointerdown', (e) => {
   const onField = g && Math.abs(g.x) < FIELD_W / 2 && Math.abs(g.z) < FIELD_D / 2;
   const harvesting = !!(field.isHarvestable(state.t) && !state.finalized);
   const working = state.started && farm.active(state.t % 365).length > 0;
-  const cutting = !!(onField && (harvesting || working));
+  const onHouse = working && farm.rayTest(ray, state.t % 365); // ハウスの雪下ろしは屋根をなぞる
+  const cutting = !!((onField || onHouse) && (harvesting || working));
   pointer = { id: e.pointerId, x: e.clientX, y: e.clientY, g, cutting };
   if (cutting) trail.push({ x: e.clientX, y: e.clientY, t: performance.now() });
 });
@@ -272,6 +273,7 @@ canvas.addEventListener('pointermove', (e) => {
   if (!pointer || pointer.id !== e.pointerId) return;
   if (pointer.cutting) {
     const g = groundPoint(e);
+    if (farm.rayHit(ray, state.t % 365)) { const now = performance.now(); if (now - lastSwish > 90) { audio.swish(0.6); lastSwish = now; } }
     if (g && pointer.g) {
       // 細かく分割して取りこぼしを防ぐ
       const steps = Math.ceil(pointer.g.distanceTo(g) / 0.5);
@@ -380,7 +382,8 @@ function frame(now) {
   const day = Math.floor(t);
   tg = updateWeather(gdt);
   {
-    const fr = farm.update(dt, t % 365, time, { running: state.started && !state.paused, harvestDone: state.finalized });
+    const fr = farm.update(dt, t % 365, time, { running: state.started && !state.paused, harvestDone: state.finalized, wx, gdt, day: lastDay });
+    if (state.started) for (const e of fr.events) toast(msg.workEvent(e, farm.rec), 8);
     if (state.started) for (const ev of fr.started) {
       if (ev.id === 'bird' && state.finalized) continue;
       if (state.speed > 1) setSpeed(1);
@@ -403,6 +406,7 @@ function frame(now) {
   const sp = sunPosition(t % 365), mp = moonPosition(t % 365, state.year + 2025);
   updateCamera(dt);
   const light = land.updateSky(sp, mp, wx, dt, time, camera);
+  lastDay = light.day;
 
   // 風
   const wa = Math.sin(time * 0.05) * 0.6 + 0.6;
@@ -436,7 +440,7 @@ function frame(now) {
 }
 // 動作確認用：?manual で自動ループを止め、__suiden.step() で1フレームずつ進める
 const MANUAL = new URLSearchParams(location.search).has('manual');
-let hudTimer = 0;
+let hudTimer = 0, lastDay = 1;
 
 // ---------- 開始 ----------
 function startGame(opt) {
@@ -481,7 +485,7 @@ function startGame(opt) {
 // ボタン
 $('btnPause').onclick = () => { state.paused = !state.paused; ui.pause.textContent = state.paused ? '▶' : '❚❚'; };
 $('btnSpeed').onclick = () => {
-  if (field.isHarvestable(state.t) && !state.finalized && state.speed === 1) {
+  if (((field.isHarvestable(state.t) && !state.finalized) || farm.active(state.t % 365).length) && state.speed === 1) {
     if (!confirm(msg.confirmFast())) return;
   }
   setSpeed(SPEEDS[(SPEEDS.indexOf(state.speed) + 1) % SPEEDS.length]);

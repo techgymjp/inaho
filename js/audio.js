@@ -262,6 +262,18 @@ export function createAudio() {
 
   return {
     init, update, swish, chime, yuyake, train,
+    // ハウスがつぶれる音
+    crash() {
+      if (!enabled) return;
+      const t0 = ctx.currentTime;
+      const s2 = ctx.createBufferSource(); s2.buffer = noiseBuffer(1.2, true);
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 500;
+      const g = ctx.createGain(); env(g, t0, 0.02, 1.1, 0.9);
+      s2.connect(lp).connect(g).connect(master); s2.start(t0);
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(180, t0); o.frequency.exponentialRampToValueAtTime(60, t0 + 0.6);
+      const og = ctx.createGain(); env(og, t0, 0.01, 0.6, 0.12);
+      o.connect(og).connect(master); o.start(t0); o.stop(t0 + 0.7);
+    },
     // スズメが飛び立つ羽音
     flutter() {
       if (!enabled) return;

@@ -236,14 +236,21 @@ export function createField(scene, quality) {
   // ---------- 作業マスク（1m 区画）：田起こし・代かきの進み具合 ----------
   const MW = Math.ceil(FIELD_W), MD = Math.ceil(FIELD_D);
   const mkMask = () => { const a = new Uint8Array(MW * MD); const t = new THREE.DataTexture(a, MW, MD, THREE.RedFormat); t.minFilter = t.magFilter = THREE.LinearFilter; t.needsUpdate = true; return { a, t }; };
-  const till = mkMask(), level = mkMask();
-  const mudU = { uTill: { value: till.t }, uTillOn: { value: 0 }, uTilled: { value: hex('#5e4330') }, uUntilled: { value: hex('#c4ad86') } };
+  const till = mkMask(), level = mkMask(), melt = mkMask();
+  const mudU = { uMelt: { value: melt.t }, uMeltOn: { value: 0 }, uMeltT: { value: 0 }, uTill: { value: till.t }, uTillOn: { value: 0 }, uTilled: { value: hex('#5e4330') }, uUntilled: { value: hex('#c4ad86') } };
   mudMat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, mudU);
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vMw;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvMw = (modelMatrix*vec4(transformed,1.0)).xyz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vMw; uniform sampler2D uTill; uniform float uTillOn; uniform vec3 uTilled, uUntilled;')
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vMw; uniform sampler2D uTill; uniform float uTillOn; uniform vec3 uTilled, uUntilled; uniform sampler2D uMelt; uniform float uMeltOn, uMeltT;')
       .replace('#include <color_fragment>', `#include <color_fragment>
+        if (uMeltOn > 0.5) {
+          // 融雪剤をまいた所：黒い粉の筋 → だんだん雪がとけて土が出る
+          float mm = smoothstep(0.35, 0.65, texture2D(uMelt, vec2((vMw.x - ${X0.toFixed(3)}) / ${MW}.0, (vMw.z - ${Z0.toFixed(3)}) / ${MD}.0)).r);
+          vec3 soot = vec3(0.16, 0.15, 0.15) * (0.8 + 0.4 * fract(sin(dot(floor(vMw.xz * 6.0), vec2(12.9898, 78.233))) * 43758.5453));
+          vec3 soil = vec3(0.42, 0.33, 0.24);
+          diffuseColor.rgb = mix(diffuseColor.rgb, mix(soot, soil, smoothstep(0.15, 0.85, uMeltT)), mm * 0.92);
+        }
         if (uTillOn > 0.5) {
           float m = texture2D(uTill, vec2((vMw.x - ${X0.toFixed(3)}) / ${MW}.0, (vMw.z - ${Z0.toFixed(3)}) / ${MD}.0)).r;
           float furrow = 0.82 + 0.18 * smoothstep(-0.3, 0.6, sin(vMw.z * 7.5));   // 耕した筋
@@ -548,6 +555,8 @@ export function createField(scene, quality) {
     const tillOn = t >= doyOf(4, 15) && t < doyOf(4, 27);
     mudU.uTillOn.value = tillOn ? 1 : 0;
     if (tillOn) mudMat.color.setRGB(1, 1, 1);
+    mudU.uMeltOn.value = t >= doyOf(2, 28) && t < doyOf(4, 5) && sc > 0.05 ? 1 : 0;
+    mudU.uMeltT.value = smooth(doyOf(3, 4), doyOf(3, 26), t);
     water.material.uniforms.uLevelOn.value = t >= doyOf(4, 28) && t < doyOf(5, 12) ? 1 : 0;
     mudMat.normalScale.setScalar(0.6 * (1 - sc * 0.9));
     // 水面
@@ -647,7 +656,7 @@ export function createField(scene, quality) {
 
   function cutRemaining() { let n = 0; for (let i = 0; i < TOTAL; i++) if (!cut[i]) { cut[i] = 1; n++; } lastLayoutKey = ''; return n; }
   function lodgeRemaining() { let n = 0; for (let i = 0; i < TOTAL; i++) if (!cut[i]) { cut[i] = 2; n++; } lastLayoutKey = ''; return n; }
-  function resetYear() { cut.fill(0); planted.fill(0); fillMask(till, 0); fillMask(level, 0); lastLayoutKey = ''; }
+  function resetYear() { cut.fill(0); planted.fill(0); fillMask(till, 0); fillMask(level, 0); fillMask(melt, 0); lastLayoutKey = ''; }
   function serialize() {
     let s = ''; for (let i = 0; i < TOTAL; i += 4) s += String.fromCharCode(65 + (cut[i] | ((cut[i + 1] || 0) << 2)), 65 + ((cut[i + 2] || 0) | ((cut[i + 3] || 0) << 2)));
     return s;
@@ -664,10 +673,10 @@ export function createField(scene, quality) {
 
   const pack = (arr) => { let s2 = ''; for (let i = 0; i < arr.length; i += 6) { let v = 0; for (let k = 0; k < 6; k++) if (arr[i + k]) v |= 1 << k; s2 += String.fromCharCode(48 + v); } return s2; };
   const unpack = (str, arr, on = 1) => { if (!str) return; for (let i = 0, c = 0; i < arr.length; i += 6, c++) { const v = str.charCodeAt(c) - 48; for (let k = 0; k < 6 && i + k < arr.length; k++) arr[i + k] = (v >> k) & 1 ? on : 0; } };
-  function serializeWork() { return { planted: pack(planted), till: pack(till.a), level: pack(level.a) }; }
+  function serializeWork() { return { planted: pack(planted), till: pack(till.a), level: pack(level.a), melt: pack(melt.a) }; }
   function deserializeWork(w) {
     if (!w) return;
-    unpack(w.planted, planted); unpack(w.till, till.a, 255); unpack(w.level, level.a, 255);
+    unpack(w.planted, planted); unpack(w.till, till.a, 255); unpack(w.level, level.a, 255); unpack(w.melt, melt.a, 255); melt.t.needsUpdate = true;
     till.t.needsUpdate = level.t.needsUpdate = true; lastLayoutKey = '';
   }
 
@@ -691,6 +700,7 @@ export function createField(scene, quality) {
     group, update, tick, cutAlong, cutRemaining, lodgeRemaining, resetYear, countCut, serialize, deserialize, setQualityGeo,
     plantAlong, countPlanted, serializeWork, deserializeWork,
     tillAlong: (ax, az, bx, bz, r) => paint(till, ax, az, bx, bz, r), levelAlong: (ax, az, bx, bz, r) => paint(level, ax, az, bx, bz, r),
+    meltAlong: (ax, az, bx, bz, r) => paint(melt, ax, az, bx, bz, r), meltRatio: () => maskRatio(melt),
     tillRatio: () => maskRatio(till), levelRatio: () => maskRatio(level), fillTill: () => fillMask(till, 255), fillLevel: () => fillMask(level, 255),
     paddyRect, inPaddy(x, z) { for (let p = 0; p < COLS * ROWS; p++) { const r = paddyRect(p); if (x > r.x && x < r.x + r.w && z > r.z && z < r.z + r.d) return true; } return false; },
     water, cut, planted, hx, hz, isHarvestable: (t) => t >= HARVEST_START && t < HARVEST_END,

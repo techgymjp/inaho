@@ -27,7 +27,7 @@ const EN = {
   'howto.4': 'Cut between Sep 28 and Oct 8 for first-grade rice. Rice left too long falls over.',
   'howto.5': 'Farm-work timing follows typical dates in the Aizu region of Fukushima.',
   'howto.6': 'A local train runs along the distant line. At dusk the town chime plays "Going Home".',
-  'howto.7': 'Farm work events through the year — tilling, puddling, planting, weeding, stink-bug control and shooing sparrows — are all done by swiping the paddies. How well you do changes the harvest.',
+  'howto.7': 'Farm work events through the year — tilling, puddling, planting, weeding, stink-bug control, shooing sparrows, and in winter repairing levees, clearing snow off the greenhouse and spreading snow-melt — are all done by swiping the paddies. How well you do changes the harvest.',
   'menu.reset': 'Start over', 'menu.close': 'Close', 'menu.lang': '日本語に切り替え',
   'result.title': "This year's harvest", 'result.back': 'Back to the paddies',
   'harvest.cut': 'Harvested', 'harvest.hint': 'Swipe across the rice to cut it',
@@ -54,7 +54,7 @@ const JA = {
   'howto.4': '9月28日〜10月8日に刈ると一等米。遅れると稲が倒れてしまいます。',
   'howto.5': '農作業の時期は会津地方の一般的な目安をもとにしています。',
   'howto.6': '遠くの線路をローカル線が走ります。夕方には「家路」のチャイムが鳴ります。',
-  'howto.7': '一年を通して、田起こし・代かき・田植え・除草・カメムシ防除・スズメ追いの農作業イベントがあります。どれも田んぼをなぞって行い、出来ばえが収穫に響きます。',
+  'howto.7': '一年を通して、田起こし・代かき・田植え・除草・カメムシ防除・スズメ追い、冬は畦の補修・ハウスの雪下ろし・融雪剤まきの農作業イベントがあります。どれも田んぼをなぞって行い、出来ばえが収穫に響きます。',
   'menu.reset': '最初からやり直す', 'menu.close': '閉じる', 'menu.lang': 'Switch to English',
   'result.title': '今年の収穫', 'result.back': '田んぼへ戻る',
   'harvest.cut': '刈り取り', 'harvest.hint': '田んぼの稲を指でなぞって刈り取る',
@@ -146,16 +146,32 @@ const WORK = {
   plant: J ? ['田植え', '田んぼをなぞって苗を植える', '植え残しは後で手伝いが植えます（収量−15%）'] : ['Planting', 'Swipe along the paddies to plant seedlings', 'Unplanted rows get planted late (−15% yield)'],
   weed: J ? ['除草', '雑草（ヒエ）をなぞって抜く', '残った雑草は稲の栄養を奪います'] : ['Weeding', 'Swipe the weeds to pull them', 'Weeds left behind steal nutrients'],
   bug: J ? ['カメムシ防除', 'カメムシをなぞって捕まえる', '放っておくとお米に斑点がついて等級が下がります'] : ['Stink-bug control', 'Swipe the stink bugs to catch them', 'Bugs left alone spot the grain and lower the grade'],
+  house: J ? ['ハウスの雪下ろし', 'ハウスの屋根をなぞって雪を落とす', '雪が重くなりすぎるとハウスがつぶれ、苗づくりに響きます'] : ['Clearing the greenhouse', 'Swipe the greenhouse roof to knock the snow off', 'Too much snow will crush the seedling greenhouse'],
+  melt: J ? ['融雪剤まき', '雪の田んぼをなぞって融雪剤をまく', '黒い粉が日光を吸って、雪どけが早まります'] : ['Spreading snow-melt', 'Swipe the snowy paddies to spread snow-melting powder', 'The dark powder soaks up sunlight so the snow melts sooner'],
+  levee: J ? ['畦の補修', '畦の穴をなぞってふさぐ', '穴が残ると来年、田んぼの水がもれます'] : ['Repairing levees', 'Swipe the holes in the levees to fill them', "Holes left open will leak water next year"],
   bird: J ? ['スズメ追い', 'スズメの群れをなぞって追い払う', 'スズメは実った稲をついばみます'] : ['Shooing sparrows', 'Swipe the flock to shoo the sparrows', 'Sparrows peck at the ripe rice'],
 };
 const daysLeft = (ev, t) => Math.max(0, Math.ceil(ev.end - t));
 Object.assign(msg, {
+  workEvent: (e, r) => {
+    if (e === 'collapse') return J ? '<b>ハウスがつぶれてしまいました…</b><br>雪の重みに耐えられませんでした。今年の苗は買い苗でまかないます。' : '<b>The greenhouse collapsed…</b><br>It could not bear the weight of the snow. Seedlings will have to be bought this year.';
+    if (e === 'houseWarn') return J ? '<b>ハウスの雪が重くなっています！</b><br>屋根をなぞって雪を下ろしましょう。' : '<b>Heavy snow on the greenhouse!</b><br>Swipe the roof to clear the snow.';
+    if (e === 'leveeDone') {
+      const fixed = Math.round((1 - r.levee.leak) * 100);
+      return J ? `<b>畦の補修が終わりました</b><br>穴の ${fixed}% をふさぎました。来年の田んぼの水もちに効きます。` : `<b>Levee repairs are done</b><br>You filled ${fixed}% of the holes. It will help the paddies hold water next year.`;
+    }
+    return '';
+  },
   workStart: (id) => `<b>${WORK[id][0]}${J ? 'の時期です' : ''}</b><br>${WORK[id][1]}${J ? '。' : '.'}<br>${WORK[id][2]}`,
   birdLine: (p) => J ? `スズメ ${p.live}群（被害 ${p.lost.toFixed(1)}kg）` : `Sparrows: ${p.live} flock(s), lost ${p.lost.toFixed(1)} kg`,
   work: (id, p, t, ev) => {
     const [label, hint, sub] = WORK[id];
     const left = J ? `あと${daysLeft(ev, t)}日` : `${daysLeft(ev, t)} days left`;
-    if (id === 'till' || id === 'level' || id === 'plant') {
+    if (id === 'house') {
+      return { label, value: p.collapsed ? (J ? 'つぶれた…' : 'Collapsed…') : (J ? `屋根の雪 ${Math.round(p.load * 100)}%` : `Snow load ${Math.round(p.load * 100)}%`), ratio: p.collapsed ? 1 : p.load, right: left, sub: p.collapsed ? (J ? '苗は買い苗でまかないます（収量−10%）' : 'Seedlings will have to be bought (−10% yield)') : sub, hint };
+    }
+    if (id === 'levee') return { label, value: J ? `${p.fixed}か所` : `${p.fixed}`, ratio: p.shown ? p.fixed / p.shown : 0, right: left, sub: (J ? `残りの穴 ${p.shown - p.fixed}か所　` : `Holes left: ${p.shown - p.fixed}　`) + sub, hint };
+    if (id === 'till' || id === 'level' || id === 'plant' || id === 'melt') {
       return { label, value: Math.floor(p * 100) + '%', ratio: p, right: left, sub, hint };
     }
     if (id === 'weed') return { label, value: J ? `${p.pulled}本` : `${p.pulled}`, ratio: p.shown ? p.pulled / p.shown : 0, right: left, sub: (J ? `生えている雑草 ${p.shown - p.pulled}本　` : `Weeds growing: ${p.shown - p.pulled}　`) + sub, hint };
@@ -171,6 +187,9 @@ Object.assign(msg, {
       [WORK.plant[0], r.plant ? (J ? `自分で ${pc(r.plant.self / r.plant.total)}` : `by you ${pc(r.plant.self / r.plant.total)}`) + mul(F.plantF) : '—'],
       [WORK.weed[0], !r.skipped?.weed && (r.weed.done || r.weed.pulled) ? (J ? `${r.weed.pulled}/${W}本` : `${r.weed.pulled}/${W}`) + mul(F.weedF) : '—'],
       [WORK.bug[0], r.bug.spawned ? (J ? `${r.bug.caught}/${r.bug.spawned}匹` : `${r.bug.caught}/${r.bug.spawned}`) + (F.bugQ < 1 ? ` <small>(${J ? '品質' : 'quality'} ×${F.bugQ.toFixed(2)})</small>` : '') : '—'],
+      [WORK.house[0], r.house && (r.house.done || r.house.collapsed) ? (r.house.collapsed ? (J ? 'つぶれた' : 'collapsed') + ` <small>(${J ? '収量' : 'yield'} ×0.90)</small>` : (J ? '無事' : 'safe')) : '—'],
+      [WORK.melt[0], pc(r.melt) + (r.melt == null ? '' : mul(F.meltF))],
+      [J ? '去年の畦の補修' : "Last year's levee repair", r.carryLeak ? (J ? `穴の残り ${Math.round(r.carryLeak * 100)}%` : `${Math.round(r.carryLeak * 100)}% left open`) + mul(F.leakF) : '—'],
       [WORK.bird[0], r.bird.shooed || birdLoss ? (J ? `被害 ${birdLoss.toFixed(1)}kg` : `lost ${birdLoss.toFixed(1)} kg`) : '—'],
     ];
     return `<h3 class="workTitle">${J ? '今年の農作業' : "This year's farm work"}</h3>` + rows.map(([a, b]) => `<div class="row"><span>${a}</span><b>${b}</b></div>`).join('');
