@@ -183,3 +183,6 @@ body.loading #start .buttons { opacity: .45; pointer-events: none; }
 /* なぞり方の案内は左下（作業中は季節の説明カードを隠すので空いている） */
 #swipeHint { left: calc(16px + env(safe-area-inset-left)); right: auto; transform: none; bottom: calc(16px + env(safe-area-inset-bottom)); max-width: calc(100vw - 32px - min(360px, calc(100vw - 32px)) - 12px); white-space: normal; }
 @media (max-height: 500px) { #swipeHint { left: calc(16px + env(safe-area-inset-left)); bottom: calc(14px + env(safe-area-inset-bottom)); font-size: 13px; } }
+/* なぞり方の案内は画面のいちばん下に小さく（景色をじゃましない） */
+#swipeHint { bottom: calc(6px + env(safe-area-inset-bottom)); padding: 5px 12px; font-size: 13px; background: rgba(0,0,0,.35); }
+@media (max-height: 500px) { #swipeHint { bottom: calc(4px + env(safe-area-inset-bottom)); font-size: 12px; padding: 4px 10px; } }
