@@ -31,7 +31,7 @@ export function createAudio() {
     // 雨
     const white = noiseBuffer(3);
     const rn = loop(white);
-    const rf = ctx.createBiquadFilter(); rf.type = 'bandpass'; rf.frequency.value = 2500; rf.Q.value = 0.4;
+    const rf = ctx.createBiquadFilter(); rf.type = 'bandpass'; rf.frequency.value = 1800; rf.Q.value = 0.5; // 耳につかないやわらかい雨音
     rainGain = ctx.createGain(); rainGain.gain.value = 0;
     rn.connect(rf).connect(rainGain).connect(master);
     // 蝉（ミンミン系のうなり）
@@ -242,7 +242,7 @@ export function createAudio() {
     const now = ctx.currentTime;
     const day = light.day;
     windGain.gain.setTargetAtTime(0.05 + wx.wind * 0.25, now, 0.5);
-    rainGain.gain.setTargetAtTime(wx.kind === 'rain' ? wx.precip * 0.22 : 0, now, 0.5);
+    rainGain.gain.setTargetAtTime(wx.kind === 'rain' ? wx.precip * 0.07 : 0, now, 0.5); // 雨音は控えめに
     const cicada = smooth(doyOf(7, 18), doyOf(7, 28), t) * (1 - smooth(doyOf(8, 25), doyOf(9, 5), t)) * day * (wx.kind === 'rain' ? 0 : 1);
     // アブラゼミの「ジー」は背景に、ミンミンゼミは時々はっきり鳴く
     cicadaGain.gain.setTargetAtTime(cicada * 0.03, now, 0.5);
