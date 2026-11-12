@@ -142,13 +142,23 @@ export function createAudio() {
     o.start(t0); o2.start(t0); o.stop(k + 0.4); o2.stop(k + 0.4);
   }
 
+  // 農作業の効果音は大きめに。音割れしないようコンプレッサーを通す
+  let sfxBus = null;
+  function sfxOut() {
+    if (sfxBus) return sfxBus;
+    sfxBus = ctx.createGain(); sfxBus.gain.value = 2.2;
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -14; comp.knee.value = 8; comp.ratio.value = 5; comp.attack.value = 0.003; comp.release.value = 0.15;
+    sfxBus.connect(comp).connect(master);
+    return sfxBus;
+  }
   function swish(strength = 1) {
     if (!enabled) return;
     const t0 = ctx.currentTime;
     const s = ctx.createBufferSource(); s.buffer = noiseBuffer(0.25);
     const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.setValueAtTime(1800, t0); f.frequency.exponentialRampToValueAtTime(4500, t0 + 0.12); f.Q.value = 1.2;
     const g = ctx.createGain(); env(g, t0, 0.01, 0.16, 0.25 * strength);
-    s.connect(f).connect(g).connect(master); s.start(t0);
+    s.connect(f).connect(g).connect(sfxOut()); s.start(t0);
   }
   function chime() {
     if (!enabled) return;
@@ -156,7 +166,7 @@ export function createAudio() {
     [523.3, 659.3, 784, 1046.5].forEach((fr, i) => {
       const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = fr;
       const g = ctx.createGain(); env(g, t0 + i * 0.12, 0.01, 1.2, 0.08);
-      o.connect(g).connect(master); o.start(t0 + i * 0.12); o.stop(t0 + i * 0.12 + 1.4);
+      o.connect(g).connect(sfxOut()); o.start(t0 + i * 0.12); o.stop(t0 + i * 0.12 + 1.4);
     });
   }
 
@@ -275,14 +285,14 @@ export function createAudio() {
         const src = ctx.createBufferSource(); src.buffer = noiseBuffer(dur + 0.05, brown);
         const fl = ctx.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q;
         const g = ctx.createGain(); env(g, t0, a, dur, peak * v);
-        src.connect(fl).connect(g).connect(master); src.start(t0); src.stop(t0 + dur + 0.06);
+        src.connect(fl).connect(g).connect(sfxOut()); src.start(t0); src.stop(t0 + dur + 0.06);
         return fl;
       };
       const tone = (f0, f1, dur, peak, type = 'sine', t0 = now) => {
         const o = ctx.createOscillator(); o.type = type;
         o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
         const g = ctx.createGain(); env(g, t0, 0.004, dur, peak * v);
-        o.connect(g).connect(master); o.start(t0); o.stop(t0 + dur + 0.05);
+        o.connect(g).connect(sfxOut()); o.start(t0); o.stop(t0 + dur + 0.05);
       };
       if (kind === 'till') {            // ザクッ（土を掘り返す）
         noise(0.16, 'bandpass', 700, 0.9, 0.35, 0.003, true);
@@ -316,11 +326,11 @@ export function createAudio() {
       const s2 = ctx.createBufferSource(); s2.buffer = noiseBuffer(0.3, true);
       const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 350;
       const g = ctx.createGain(); env(g, t0, 0.008, 0.22, 0.5);
-      s2.connect(lp).connect(g).connect(master); s2.start(t0);
+      s2.connect(lp).connect(g).connect(sfxOut()); s2.start(t0);
       const n2 = ctx.createBufferSource(); n2.buffer = noiseBuffer(0.25);
       const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2500;
       const g2 = ctx.createGain(); env(g2, t0 + 0.01, 0.01, 0.2, 0.05);   // 粉雪のサラサラ
-      n2.connect(hp).connect(g2).connect(master); n2.start(t0);
+      n2.connect(hp).connect(g2).connect(sfxOut()); n2.start(t0);
     },
     // ハウスがつぶれる音
     crash() {
@@ -329,10 +339,10 @@ export function createAudio() {
       const s2 = ctx.createBufferSource(); s2.buffer = noiseBuffer(1.2, true);
       const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 500;
       const g = ctx.createGain(); env(g, t0, 0.02, 1.1, 0.9);
-      s2.connect(lp).connect(g).connect(master); s2.start(t0);
+      s2.connect(lp).connect(g).connect(sfxOut()); s2.start(t0);
       const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(180, t0); o.frequency.exponentialRampToValueAtTime(60, t0 + 0.6);
       const og = ctx.createGain(); env(og, t0, 0.01, 0.6, 0.12);
-      o.connect(og).connect(master); o.start(t0); o.stop(t0 + 0.7);
+      o.connect(og).connect(sfxOut()); o.start(t0); o.stop(t0 + 0.7);
     },
     // スズメが飛び立つ羽音
     flutter() {
@@ -342,7 +352,7 @@ export function createAudio() {
         const s2 = ctx.createBufferSource(); s2.buffer = noiseBuffer(0.06);
         const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1400 + Math.random() * 900; bp.Q.value = 1;
         const g = ctx.createGain(); env(g, t0 + k * 0.035 + Math.random() * 0.02, 0.005, 0.05, 0.12);
-        s2.connect(bp).connect(g).connect(master); s2.start(t0 + k * 0.035);
+        s2.connect(bp).connect(g).connect(sfxOut()); s2.start(t0 + k * 0.035);
       }
       bird(t0 + 0.1); bird(t0 + 0.25);
     },
