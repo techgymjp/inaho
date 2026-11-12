@@ -149,6 +149,24 @@
   </div>
 
   <noscript>このゲームを遊ぶには JavaScript と WebGL が必要です。</noscript>
+  <!-- web-only -->
+  <style>
+    /* スマホの縦画面（Web 版）：なぞり方の案内は、右下の作業パネルのすぐ上に1行で出す */
+    @media (max-width: 560px) {
+      #swipeHint { left: 50%; right: auto; transform: translateX(-50%); max-width: calc(100vw - 32px);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        bottom: calc(16px + var(--panelH, 120px) + 10px + env(safe-area-inset-bottom)); }
+    }
+  </style>
+  <script>
+    // 作業パネルの高さに合わせて、案内をその上に置く
+    (function () {
+      var p = document.getElementById('harvestPanel');
+      if (!p || !window.ResizeObserver) return;
+      new ResizeObserver(function () { document.documentElement.style.setProperty('--panelH', p.offsetHeight + 'px'); }).observe(p);
+    })();
+  </script>
+  <!-- /web-only -->
   <script src="js/ads-config.js"></script>
   <script src="js/build-info.js"></script>
   <script src="js/ads.js"></script>
