@@ -35,7 +35,7 @@ const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.15, 6
 const land = createLandscape(scene, renderer, Q);
 const field = createField(scene, Q);
 const fx = createEffects(scene);
-const farm = createFarmwork({ scene, field, fx, audio: { flutter: () => audio.flutter && audio.flutter(), crash: () => audio.crash && audio.crash() } });
+const farm = createFarmwork({ scene, field, fx, audio: { flutter: () => audio.flutter && audio.flutter(), crash: () => audio.crash && audio.crash(), thud: () => audio.thud && audio.thud() } });
 const flowers = createFlowers(scene);
 const audio = createAudio();
 

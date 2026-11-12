@@ -173,9 +173,9 @@ export function createFarmwork({ scene, field, fx, audio }) {
   // ---------- ビニールハウス（育苗用）：冬は雪下ろしが必要 ----------
   const HX = 2, HZ = -50, HL = 22, HRAD = 3;
   const house = new THREE.Group();
-  const film = new THREE.Mesh(new THREE.CylinderGeometry(HRAD, HRAD, HL, 18, 1, true, -Math.PI / 2, Math.PI).rotateZ(Math.PI / 2).rotateX(Math.PI / 2),
+  // 半円筒（軸は東西、上半分）
+  const film = new THREE.Mesh(new THREE.CylinderGeometry(HRAD, HRAD, HL, 18, 1, true, Math.PI, Math.PI).rotateZ(-Math.PI / 2),
     new THREE.MeshLambertMaterial({ color: 0xe4eef4, transparent: true, opacity: 0.78, side: THREE.DoubleSide, depthWrite: false }));
-  film.rotation.y = Math.PI / 2;
   const ends = new THREE.Mesh(new THREE.CircleGeometry(HRAD, 18, 0, Math.PI), film.material);
   const ends2 = ends.clone();
   ends.position.set(-HL / 2, 0, 0); ends.rotation.y = Math.PI / 2;
@@ -191,14 +191,103 @@ export function createFarmwork({ scene, field, fx, audio }) {
   const trays = new THREE.Mesh(new THREE.BoxGeometry(HL - 2, 0.25, HRAD * 1.2), toon({ color: '#7cc246' }));
   trays.position.y = 0.6; house.add(trays);
   // 屋根の雪
-  const snowCap = new THREE.Mesh(new THREE.CylinderGeometry(HRAD + 0.05, HRAD + 0.05, HL + 0.2, 18, 1, false, -Math.PI / 3.2, Math.PI / 1.6).rotateZ(Math.PI / 2).rotateX(Math.PI / 2),
+  const snowCap = new THREE.Mesh(new THREE.CylinderGeometry(HRAD + 0.05, HRAD + 0.05, HL + 0.2, 18, 1, false, Math.PI * 1.5 - Math.PI / 3.2, Math.PI / 1.6).rotateZ(-Math.PI / 2),
     toon({ color: '#f4f8fc' }));
-  snowCap.rotation.y = Math.PI / 2;
   house.add(snowCap);
   house.position.set(HX, 0.35, HZ);
   house.traverse(o => { if (o.isMesh) o.castShadow = true; });
   group.add(house);
   const houseBox = new THREE.Box3(new THREE.Vector3(HX - HL / 2 - 0.5, 0, HZ - HRAD - 0.5), new THREE.Vector3(HX + HL / 2 + 0.5, HRAD + 1.2, HZ + HRAD + 0.5));
+  // ---- 雪下ろしの雪のかたまり：屋根をすべり落ちて、地面でドサッとくずれる ----
+  const CH = 160;
+  const chunkMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.32, 0), toon({ color: '#f6f9fc' }), CH);
+  chunkMesh.frustumCulled = false;
+  group.add(chunkMesh);
+  const chunks = Array.from({ length: CH }, () => ({ live: false }));
+  let chunkHead = 0, thudTimer = 0;
+  // 粉雪のけむり
+  const PUFF = 200;
+  const puffPos = new Float32Array(PUFF * 3), puffVel = new Float32Array(PUFF * 3), puffLife = new Float32Array(PUFF);
+  const puffGeo = new THREE.BufferGeometry();
+  puffGeo.setAttribute('position', new THREE.BufferAttribute(puffPos, 3));
+  const puffMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.35, transparent: true, opacity: 0.85, depthWrite: false });
+  const puffs = new THREE.Points(puffGeo, puffMat);
+  puffs.frustumCulled = false;
+  for (let i = 0; i < PUFF; i++) puffPos[i * 3 + 1] = -100;
+  group.add(puffs);
+  let puffHead = 0;
+  function puff(x, y, z, n) {
+    for (let k = 0; k < n; k++) {
+      const i = puffHead; puffHead = (puffHead + 1) % PUFF;
+      puffPos.set([x + (R() - 0.5) * 0.6, y + R() * 0.3, z + (R() - 0.5) * 0.6], i * 3);
+      puffVel.set([(R() - 0.5) * 1.6, 0.4 + R() * 1.2, (R() - 0.5) * 1.6], i * 3);
+      puffLife[i] = 0.6 + R() * 0.6;
+    }
+  }
+  function spawnChunks(hit, n) {
+    const side = hit.z >= HZ ? 1 : -1;            // カメラ側（南）の屋根から落ちることが多い
+    for (let k = 0; k < n; k++) {
+      const c = chunks[chunkHead]; chunkHead = (chunkHead + 1) % CH;
+      // 屋根の上の位置（角度 a：0=てっぺん、π/2=軒）
+      const a = 0.15 + R() * 0.6;
+      c.live = true; c.phase = 'slide'; c.a = a; c.side = side;
+      c.x = THREE.MathUtils.clamp(hit.x + (R() - 0.5) * 2.2, HX - HL / 2 + 0.5, HX + HL / 2 - 0.5);
+      c.av = 0.2 + R() * 0.4;                          // 屋根をすべる角速度
+      c.s = 0.6 + R() * 0.9; c.rot = R() * 6; c.spin = (R() - 0.5) * 6; c.life = 0;
+    }
+    puff(hit.x, HRAD + 0.6, HZ + side * 1.2, 6);
+  }
+  function updateChunks(dt) {
+    let any = false;
+    const ground = 0.35;
+    for (let ci = 0; ci < CH; ci++) {
+      const c = chunks[ci];
+      if (!c.live) continue;
+      any = true;
+      if (c.phase === 'slide') {
+        c.av += 2.4 * Math.sin(c.a) * dt + 0.6 * dt;     // 傾きが急になるほど速くすべる
+        c.a += c.av * dt;
+        c.y = 0.35 + (HRAD + 0.25) * Math.cos(c.a); c.z = HZ + c.side * (HRAD + 0.25) * Math.sin(c.a);
+        if (c.a >= Math.PI / 2 - 0.05) {                // 軒から落ちる
+          c.phase = 'fall';
+          const sp = c.av * (HRAD + 0.25);
+          c.vy = -sp * 0.2; c.vz = c.side * sp * 0.9; c.vx = (R() - 0.5) * 0.5;
+        }
+      } else if (c.phase === 'fall') {
+        c.vy -= 9.8 * dt; c.x += c.vx * dt; c.y += c.vy * dt; c.z += c.vz * dt;
+        if (c.y <= ground + 0.15 * c.s) {
+          c.y = ground + 0.12 * c.s; c.phase = 'land'; c.life = 0; c.s *= 1.25;
+          puff(c.x, ground + 0.2, c.z, 4);
+          if (thudTimer <= 0) { audio.thud && audio.thud(); thudTimer = 0.12; }
+        }
+      } else {
+        c.life += dt;                                    // 地面でくずれて、雪の山にまぎれる
+        if (c.life > 1.6) c.live = false;
+      }
+      c.rot += c.spin * dt * (c.phase === 'land' ? 0 : 1);
+      const flat = c.phase === 'land' ? Math.max(0.15, 0.55 - c.life * 0.25) : 1;
+      const sc = c.live ? c.s : 1e-4;
+      m4.compose(v.set(c.x, c.y, c.z), q.setFromEuler(new THREE.Euler(c.rot, c.rot * 0.7, 0)), sv.set(sc * (c.phase === 'land' ? 1.3 : 1), sc * flat, sc));
+      chunkMesh.setMatrixAt(ci, m4);
+    }
+    if (!any) return;
+    chunkMesh.instanceMatrix.needsUpdate = true;
+  }
+  function updatePuffs(dt) {
+    for (let i = 0; i < PUFF; i++) {
+      if (puffLife[i] <= 0) continue;
+      puffLife[i] -= dt;
+      puffVel[i * 3 + 1] -= 1.5 * dt;
+      for (let k = 0; k < 3; k++) puffPos[i * 3 + k] += puffVel[i * 3 + k] * dt;
+      if (puffLife[i] <= 0) puffPos[i * 3 + 1] = -100;
+    }
+    puffGeo.attributes.position.needsUpdate = true;
+  }
+  for (let i = 0; i < CH; i++) { m4.compose(v.set(0, -100, 0), q.identity(), sv.setScalar(1e-4)); chunkMesh.setMatrixAt(i, m4); }
+  // 下ろした雪がハウスの両脇に山になる
+  const pileGeo = new THREE.SphereGeometry(1, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2).scale(HL / 2 + 0.5, 1, 1);
+  const piles = [-1, 1].map(side => { const m = new THREE.Mesh(pileGeo, toon({ color: '#f4f8fc' })); m.position.set(HX, 0.3, HZ + side * (HRAD + 1.1)); m.receiveShadow = true; group.add(m); return m; });
+
   function layoutHouse(t) {
     const h = rec.house, sc = snowCover(t);
     const inEv = t >= EV.house.start && t < EV.house.end && !rec.skipped.house;
@@ -332,6 +421,13 @@ export function createFarmwork({ scene, field, fx, audio }) {
       if (rec.house.load < 0.5) rec.house.warned = false;
     }
     layoutHouse(t);
+    thudTimer -= dt;
+    updateChunks(dt); updatePuffs(dt);
+    {
+      const sc = snowCover(t), cl = Math.min(1, rec.house.cleared / 40);
+      const h = 0.15 + 0.6 * sc + 0.9 * cl * sc;
+      piles.forEach((m, i) => { m.visible = sc > 0.1; m.scale.set(1, h * (i ? 1 : 0.8), 0.9 + 0.5 * cl); });
+    }
     layoutHoles(t);
     layoutSwans(t, time, opts.day);
 
@@ -415,9 +511,9 @@ export function createFarmwork({ scene, field, fx, audio }) {
   function rayHit(ray, t) {
     if (!rayTest(ray, t)) return 0;
     if (rec.house.load <= 0.001) return 0;
-    rec.house.load = Math.max(0, rec.house.load - 0.06);
+    rec.house.load = Math.max(0, rec.house.load - 0.035);
     rec.house.cleared++;
-    fx.burst(hitP.x, hitP.z + 3.5, 3);
+    spawnChunks(hitP, 2 + Math.round(R() * 2));
     return 1;
   }
 

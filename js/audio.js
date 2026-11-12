@@ -262,6 +262,19 @@ export function createAudio() {
 
   return {
     init, update, swish, chime, yuyake, train,
+    // 雪のかたまりが地面に落ちる「ドサッ」
+    thud() {
+      if (!enabled) return;
+      const t0 = ctx.currentTime;
+      const s2 = ctx.createBufferSource(); s2.buffer = noiseBuffer(0.3, true);
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 350;
+      const g = ctx.createGain(); env(g, t0, 0.008, 0.22, 0.5);
+      s2.connect(lp).connect(g).connect(master); s2.start(t0);
+      const n2 = ctx.createBufferSource(); n2.buffer = noiseBuffer(0.25);
+      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2500;
+      const g2 = ctx.createGain(); env(g2, t0 + 0.01, 0.01, 0.2, 0.05);   // 粉雪のサラサラ
+      n2.connect(hp).connect(g2).connect(master); n2.start(t0);
+    },
     // ハウスがつぶれる音
     crash() {
       if (!enabled) return;
