@@ -165,5 +165,5 @@ The game starts on today's date and the seasons follow the real calendar. Enjoy 
 | 3 | 田植え | 田植えも除草も、あなたの手で | Plant and weed with your own hands |
 | 4 | 冬のハウスの雪下ろしと白鳥 | 雪国の冬は、ハウスの雪下ろし | Clear the snow in a snowy winter |
 | 5 | 秋の古民家と柿 | 茅葺きの古民家と、色づく柿 | A thatched farmhouse and ripe persimmons |
-| 6 | 夏の星空と天の川 | 実際の星の位置で描く星空 | A real starry sky with the Milky Way |
+| 6 | 5月の夕焼け、水鏡と線路 | 夕焼けの水鏡に、家路のチャイム | Sunset over the paddies at dusk |
 | 7 | 春の桜と菜の花 | 桜と菜の花、春の田んぼ | Cherry blossoms and rapeseed in spring |
