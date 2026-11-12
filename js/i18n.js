@@ -36,6 +36,9 @@ const EN = {
   'quality': 'Quality', 'quality.high': 'High', 'quality.low': 'Light', 'quality.switch': 'switch',
   'tag.info': 'This season (just read)', 'tag.work': 'Farm work (your job)', 'tag.workStart': "Farm work — it's your turn",
   'ev.todo': 'What to do', 'ev.effect': 'Effect', 'ev.when': 'Period', 'ev.start': 'Start',
+  'pause.title': 'Paused', 'pause.resume': 'Resume', 'toTitle': 'Back to title', 'back': 'Back', 'howto.play': 'Play',
+  'privacy': 'Privacy policy', 'adPrivacy': 'Ad settings', 'share': 'Share result', 'best': 'Best harvest',
+  'reward.tag': 'Harvest deadline', 'reward.title': 'There is still rice standing', 'reward.yes': 'Watch an ad for 3 more days', 'reward.no': 'Give up',
   // views
   'view.aze': 'Levee', 'view.drone': 'Sky', 'view.yama': 'Hillside', 'view.kominka': 'Farmhouse', 'view.hoshi': 'Night sky', 'view.north': 'Canal',
   // weather
@@ -66,6 +69,9 @@ const JA = {
   'quality': '画質', 'quality.high': '高', 'quality.low': '軽量', 'quality.switch': '切替',
   'tag.info': 'いまの田んぼ（読むだけ）', 'tag.work': '農作業イベント（あなたの作業）', 'tag.workStart': '農作業イベント　あなたの出番です',
   'ev.todo': 'やること', 'ev.effect': '結果への影響', 'ev.when': '期間', 'ev.start': 'はじめる',
+  'pause.title': '一時停止', 'pause.resume': '再開する', 'toTitle': 'タイトルに戻る', 'back': '戻る', 'howto.play': 'プレイする',
+  'privacy': 'プライバシーポリシー', 'adPrivacy': '広告の設定', 'share': '結果をシェア', 'best': 'これまでの最高',
+  'reward.tag': '稲刈りの期限です', 'reward.title': 'まだ稲が残っています', 'reward.yes': '広告を見て3日延ばす', 'reward.no': 'あきらめる',
   'view.aze': '畦道', 'view.drone': '空から', 'view.yama': '里山', 'view.kominka': '古民家', 'view.hoshi': '星空', 'view.north': '水路',
   'wx.clear': '晴れ', 'wx.cloudy': 'くもり', 'wx.rain': '雨', 'wx.snow': '雪',
 };
@@ -115,6 +121,12 @@ export const msg = {
   gradeNow: (g) => LANG === 'ja' ? `いま刈ると：${g}` : `Cut now: ${gradeText(g)}`,
   view: (label) => LANG === 'ja' ? `視点：${label}` : `View: ${label}`,
   quality: (name) => LANG === 'ja' ? `画質：${name}（切替）` : `Quality: ${name} (switch)`,
+  rewardText: (pct) => LANG === 'ja' ? `刈り残した稲が ${pct}% あります。このままだと倒れてしまいます。広告を見ると、稲刈りの期限を3日延ばせます（1年に1回）。` : `${pct}% of the rice is still uncut and will fall over. Watch an ad to extend the harvest by 3 days (once a year).`,
+  extended: (n) => LANG === 'ja' ? `稲刈りの延長 ${n}回` : `Harvest extended ${n}×`,
+  shareText: (rec) => LANG === 'ja'
+    ? `水田365日　${rec.year}年目の収穫は ${rec.kg.toLocaleString()}kg（${(rec.kg / 60).toFixed(1)}俵）、${rec.grade}でした。${rec.ext ? `（稲刈りの延長 ${rec.ext}回）` : ''} #水田365日`
+    : `Suiden 365 — Year ${rec.year} harvest: ${rec.kg.toLocaleString()} kg (${(rec.kg / 60).toFixed(1)} bales), ${gradeText(rec.grade)}.${rec.ext ? ` (harvest extended ${rec.ext}×)` : ''} #Suiden365`,
+  best: (r) => LANG === 'ja' ? `これまでの最高：${r.kg.toLocaleString()}kg（${r.year}年目・${r.grade}）` : `Best harvest: ${r.kg.toLocaleString()} kg (year ${r.year}, ${gradeText(r.grade)})`,
   confirmNewGame: () => LANG === 'ja' ? 'これまでの続きと記録は消えます。今日の日付から新しく始めますか？' : 'Your saved progress and records will be erased. Start a new game from today?',
   confirmReset: () => LANG === 'ja' ? '記録を消して最初からやり直しますか？' : 'Erase your records and start over?',
   noRecords: () => LANG === 'ja' ? 'まだ収穫の記録はありません' : 'No harvests recorded yet',
@@ -146,6 +158,7 @@ export const msg = {
 
 // ---- 農作業イベント ----
 const J = LANG === 'ja';
+if (LANG !== 'ja') { const pl = document.getElementById('privacyLink'); if (pl) pl.href = 'https://techgym.jp/privacy-policy-en/'; }
 const WORK = {
   till: J ? ['田起こし', '田んぼをなぞって耕す', 'よく耕すほど収量が増えます'] : ['Tilling', 'Swipe the paddies to till', 'More tilling, bigger harvest'],
   level: J ? ['代かき', '水を張った田んぼをなぞって平らにする', 'デコボコが残ると苗の育ちがそろいません'] : ['Puddling', 'Swipe the flooded paddies to level them', 'Bumpy paddies grow uneven rice'],

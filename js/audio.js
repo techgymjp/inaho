@@ -273,6 +273,9 @@ export function createAudio() {
 
   return {
     init, update, swish, chime, yuyake, train,
+    // 全画面広告の表示中や、別のアプリに切り替えたときは音を止める
+    suspend() { if (ctx && ctx.state === 'running') ctx.suspend(); },
+    resume() { if (ctx && enabled && ctx.state === 'suspended') ctx.resume(); },
     // 農作業ごとのスワイプ音
     sfx(kind, strength = 1) {
       if (!enabled) return;

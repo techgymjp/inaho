@@ -41,6 +41,9 @@ const farm = createFarmwork({ scene, field, fx, audio: { flutter: () => audio.fl
 const flowers = createFlowers(scene);
 const starSky = createStarSky(scene, 37.5);
 const audio = createAudio();
+window.GameSound = audio; // 広告の表示中に音を止めるため（js/ads.js から使う）
+const Ads = window.Ads || { available: false, canReward: false, showing: false, initDone: Promise.resolve(), showInterstitial: async () => {}, showRewarded: async () => 'unavailable', setBanner() {}, showPrivacyOptions: async () => {}, privacyOptionsRequired: false };
+const native = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 
 // ---------- 状態 ----------
 const SAVE_KEY = 'suiden365.save.v1';
@@ -56,7 +59,7 @@ function save() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       year: state.year, t: state.t, speed: state.speed, harvestKg: state.harvestKg, harvestQ: state.harvestQ,
-      finalized: state.finalized, records: state.records, cut: field.serialize(), work: field.serializeWork(), farm: farm.serialize(), view: state.view, harvestPrompted: state.harvestPrompted,
+      finalized: state.finalized, records: state.records, cut: field.serialize(), work: field.serializeWork(), harvestExtra: state.harvestExtra || 0, extendUsed: state.extendUsed || 0, rewardAsked: !!state.rewardAsked, farm: farm.serialize(), view: state.view, harvestPrompted: state.harvestPrompted,
       calYear: state.calYear,
     }));
   } catch (e) { /* 保存できない環境 */ }
@@ -319,6 +322,41 @@ function drawTrail() {
   }
 }
 
+let lastRec = null, rewardOpen = false;
+// ---- リワード広告：稲刈りの期限が来たとき、広告を見ると3日延ばせる（1年に1回） ----
+function offerHarvestReward(left) {
+  state.rewardAsked = true;
+  rewardOpen = true;
+  state.paused = true;
+  // 倒れかけた田んぼを見届けてから案内を出す
+  setTimeout(() => {
+    $('rewardText').textContent = msg.rewardText(Math.ceil(left * 100));
+    $('rewardAsk').classList.add('show');
+    let sec = 8;
+    $('rewardCount').textContent = ` ${sec}`;
+    const timer = setInterval(() => { sec--; $('rewardCount').textContent = ` ${sec}`; if (sec <= 0) done(false); }, 1000);
+    async function done(watch) {
+      clearInterval(timer);
+      if (!$('rewardAsk').classList.contains('show')) return;
+      $('rewardAsk').classList.remove('show');
+      const r = watch ? await Ads.showRewarded() : 'skipped';
+      rewardOpen = false;
+      if (r === 'rewarded') {
+        state.harvestExtra = (state.harvestExtra || 0) + 3;
+        state.extendUsed = (state.extendUsed || 0) + 1;
+        field.setHarvestExtra(state.harvestExtra);
+        toast(msg.extended(state.extendUsed), 5);
+      } else {
+        finalizeHarvest(true);
+      }
+      state.paused = false;
+      ui.pause.textContent = '❚❚';
+    }
+    $('btnRewardYes').onclick = () => done(true);
+    $('btnRewardNo').onclick = () => done(false);
+  }, 2500);
+}
+
 function finalizeHarvest(late) {
   if (state.finalized) return;
   state.finalized = true;
@@ -328,7 +366,8 @@ function finalizeHarvest(late) {
   const birdLoss = Math.min(state.harvestKg * 0.5, farm.rec.bird.lostKg);
   state.harvestKg = Math.max(0, state.harvestKg - birdLoss);
   const kg = state.harvestKg;
-  const rec = { year: state.year, kg: Math.round(kg), grade: kg > 0 ? grade(state.harvestQ) : '—', rate: Math.round(field.countCutCached / TOTAL * 100) };
+  const rec = { year: state.year, kg: Math.round(kg), grade: kg > 0 ? grade(state.harvestQ) : '—', rate: Math.round(field.countCutCached / TOTAL * 100), ext: state.extendUsed || 0 };
+  lastRec = rec;
   rec.work = msg.workSummary(farm.rec, farm.factors(), birdLoss, farm.WEEDS);
   state.records = state.records.filter(r => r.year !== state.year).concat(rec);
   audio.chime();
@@ -337,7 +376,7 @@ function finalizeHarvest(late) {
 }
 function showResult(rec, lost) {
   const bowls = Math.round(rec.kg * 0.9 * 1000 / 65); // 精米歩留まり90%、ごはん1杯=精米65g
-  $('resultBody').innerHTML = msg.result(rec, bowls, lost ? Math.round(lost / TOTAL * 100) : 0) + (rec.work || '');
+  $('resultBody').innerHTML = msg.result(rec, bowls, lost ? Math.round(lost / TOTAL * 100) : 0) + (rec.ext ? `<p class="note">${msg.extended(rec.ext)}</p>` : '') + (rec.work || '');
   $('result').classList.add('show');
 }
 
@@ -380,6 +419,7 @@ function newYear() {
   state.year++;
   state.calYear = (state.calYear || 2026) + 1;
   state.harvestKg = 0; state.harvestQ = 0; state.finalized = false; state.harvestPrompted = false;
+  state.harvestExtra = 0; state.extendUsed = 0; state.rewardAsked = false; field.setHarvestExtra(0);
   field.resetYear(); field.countCutCached = 0; farm.reset();
   field.update(state.t, true);
   const last = state.records[state.records.length - 1];
@@ -403,7 +443,13 @@ function frame(now) {
         showEventCard('harvest', { start: HARVEST_START, end: HARVEST_END });
       }
     }
-    if (state.t >= HARVEST_END && state.t < 365 && !state.finalized) finalizeHarvest(true);
+    const hEnd = HARVEST_END + (state.harvestExtra || 0);
+    if (state.t >= hEnd && state.t < 365 && !state.finalized) {
+      // 刈り残しがあれば、広告を見て期限を延ばすかをたずねる（1年に1回）
+      const left = 1 - field.countCutCached / TOTAL;
+      if (Ads.canReward && !state.rewardAsked && left > 0.005) offerHarvestReward(left);
+      else if (!rewardOpen) finalizeHarvest(true);
+    }
     // 保存データなどで刈り取りがほぼ終わっているのに完了していない場合
     if (!state.finalized && field.isHarvestable(state.t) && field.countCutCached >= TOTAL * 0.995) {
       const rest = field.cutRemaining();
@@ -477,8 +523,11 @@ function frame(now) {
   if (hudTimer <= 0) { hudTimer = 0.2; updateHUD(tg); }
   if (!MANUAL) requestAnimationFrame(frame);
 }
-// 動作確認用：?manual で自動ループを止め、__suiden.step() で1フレームずつ進める
-const MANUAL = new URLSearchParams(location.search).has('manual');
+let MANUAL = false;
+// web-only:start
+// 動作確認用：?manual で自動ループを止め、__suiden.step() で1フレームずつ進める（アプリには入れない）
+MANUAL = new URLSearchParams(location.search).has('manual');
+// web-only:end
 let hudTimer = 0, lastDay = 1;
 
 // ---------- 開始 ----------
@@ -487,6 +536,8 @@ function startGame(opt) {
   const now = new Date();
   if (saved) {
     Object.assign(state, { year: saved.year, t: saved.t, harvestKg: saved.harvestKg, harvestQ: saved.harvestQ || 0, finalized: saved.finalized, records: saved.records || [], harvestPrompted: !!saved.harvestPrompted, calYear: saved.calYear || now.getFullYear() });
+    Object.assign(state, { harvestExtra: saved.harvestExtra || 0, extendUsed: saved.extendUsed || 0, rewardAsked: !!saved.rewardAsked });
+    field.setHarvestExtra(state.harvestExtra);
     field.deserialize(saved.cut); field.deserializeWork(saved.work); farm.reset(); farm.deserialize(saved.farm); farm.skipPast(saved.t % 365);
     setSpeed(1);
     setView(VIEWS[saved.view] ? saved.view : 'aze', true);
@@ -528,7 +579,67 @@ function startGame(opt) {
 }
 
 // ボタン
-$('btnPause').onclick = () => { state.paused = !state.paused; ui.pause.textContent = state.paused ? '▶' : '❚❚'; };
+// ---- 画面の切り替えと広告 ----
+// バナー：タイトル・あそびかた・一時停止・結果の画面だけ。全画面広告：プレイ開始・タイトルに戻る・再開・結果から田んぼへ戻る、のたびに毎回
+const shown = (id) => $(id).classList.contains('show');
+function syncBanner() {
+  const on = shown('start') || shown('howto') || shown('menu') || shown('result');
+  Ads.setBanner(on);
+  document.body.classList.toggle('has-banner', on && Ads.available);
+}
+new MutationObserver(syncBanner).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+let pausedBeforeMenu = false;
+function openPause() {
+  if (!state.started || shown('menu')) return;
+  pausedBeforeMenu = state.paused;
+  state.paused = true;
+  ui.pause.textContent = '▶';
+  renderRecords();
+  $('menu').classList.add('show');
+}
+async function resumeFromPause() {
+  $('menu').classList.remove('show');
+  await Ads.showInterstitial(3000);
+  state.paused = shown('eventCard') || shown('rewardAsk') ? true : false;
+  ui.pause.textContent = state.paused ? '▶' : '❚❚';
+}
+async function backToTitle() {
+  save();
+  await Ads.showInterstitial(3000);
+  location.reload(); // タイトル画面（「つづきから」）に戻る
+}
+async function playFromTitle(opt) {
+  await Ads.showInterstitial(3000);
+  startGame(opt);
+}
+let howtoFrom = 'start';
+function openHowto(from) { howtoFrom = from; $('howto').classList.add('show'); }
+$('btnHowto').onclick = () => openHowto('start');
+$('btnPauseHowto').onclick = () => { $('menu').classList.remove('show'); openHowto('menu'); };
+$('btnHowtoBack').onclick = async () => {
+  $('howto').classList.remove('show');
+  if (howtoFrom === 'menu') $('menu').classList.add('show');
+  else await Ads.showInterstitial(3000); // あそびかた → タイトルに戻る
+};
+$('btnHowtoPlay').onclick = async () => {
+  $('howto').classList.remove('show');
+  if (howtoFrom === 'menu') { await resumeFromPause(); return; }
+  playFromTitle(load() ? 'continue' : 'today');
+};
+$('btnToTitle').onclick = backToTitle;
+$('btnResultTitle').onclick = () => { $('result').classList.remove('show'); backToTitle(); };
+$('btnShare').onclick = () => shareResult(lastRec);
+async function shareResult(rec) {
+  if (!rec) return;
+  const text = msg.shareText(rec);
+  const share = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Share;
+  try {
+    if (native && share) await share.share({ text, dialogTitle: tr('share') });
+    else if (navigator.share) await navigator.share({ text });
+    else { await navigator.clipboard.writeText(text); toast(LANG === 'ja' ? '結果をコピーしました' : 'Copied the result', 3); }
+  } catch (e) { /* 共有をやめた */ }
+}
+$('btnPause').onclick = () => { if (shown('menu')) resumeFromPause(); else openPause(); };
 // 再生スピードは常に等速（プレイ画面では変更できない）
 $('btnView').onclick = () => {
   const order = VIEW_ORDER;
@@ -536,9 +647,8 @@ $('btnView').onclick = () => {
   setView(order[(i + 1) % order.length]);
 };
 $('btnSound').onclick = () => { const on = audio.toggle(); ui.sound.textContent = tr(on ? 'sound.on' : 'sound.off'); };
-$('btnMenu').onclick = () => { renderRecords(); $('menu').classList.add('show'); };
-$('btnCloseMenu').onclick = () => $('menu').classList.remove('show');
-$('btnCloseResult').onclick = () => $('result').classList.remove('show');
+$('btnCloseMenu').onclick = resumeFromPause;
+$('btnCloseResult').onclick = async () => { $('result').classList.remove('show'); await Ads.showInterstitial(3000); }; // 結果 → 田んぼへ（次の年へ）
 $('btnQuality').textContent = msg.quality(Q.name);
 $('btnLang').textContent = tr('menu.lang');
 $('btnLang').onclick = () => { save(); setLang(LANG === 'ja' ? 'en' : 'ja'); };
@@ -554,13 +664,19 @@ function renderRecords() {
 }
 document.querySelectorAll('[data-start]').forEach(b => (b.onclick = () => {
   if (b.dataset.start === 'today' && load() && !confirm(msg.confirmNewGame())) return;
-  startGame(b.dataset.start);
+  playFromTitle(b.dataset.start);
 }));
 if (load()) {
   // 続きがあるときは「つづきから」を主ボタンに。今日から始め直すときは確認する
   $('btnContinue').hidden = false;
   $('btnToday').classList.remove('primary');
+  const recs = (load().records || []).filter(r => r.kg > 0);
+  if (recs.length) { const b = recs.reduce((a, r) => (r.kg > a.kg ? r : a)); $('bestRecord').textContent = msg.best(b); $('bestRecord').hidden = false; }
 }
+$('appVersion').textContent = window.APP_VERSION || 'dev';
+Ads.initDone.then(() => { if (Ads.privacyOptionsRequired) $('adPrivacy').hidden = false; });
+$('adPrivacyLink').addEventListener('click', (e) => { e.preventDefault(); Ads.showPrivacyOptions(); });
+syncBanner();
 {
   const now = new Date();
   $('todayLabel').textContent = fmtMonthDay(now.getMonth() + 1, now.getDate());
@@ -568,10 +684,30 @@ if (load()) {
   $('btnPause').title = tr('btn.pause');
 }
 addEventListener('keydown', (e) => {
-  if (e.key === ' ') $('btnPause').click();
+  if (e.key === ' ' && state.started) $('btnPause').click();
   if (e.key === 'v') $('btnView').click();
 });
-addEventListener('visibilitychange', save);
+// 別のアプリに切り替えたら自動で一時停止し、音も止める
+addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    save();
+    if (state.started && !shown('menu') && !shown('result') && !shown('eventCard') && !shown('rewardAsk')) openPause();
+    audio.suspend();
+  } else audio.resume();
+});
+// Android の戻るボタン：プレイ中は一時停止、一時停止中は再開、タイトルではアプリを終了
+if (native && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+  const App = window.Capacitor.Plugins.App;
+  App.addListener('backButton', () => {
+    if (Ads.showing) return;
+    if (shown('howto')) { $('btnHowtoBack').click(); return; }
+    if (shown('rewardAsk')) { $('btnRewardNo').click(); return; }
+    if (shown('eventCard')) { $('btnEvStart').click(); return; }
+    if (shown('result')) { $('btnCloseResult').click(); return; }
+    if (shown('start') || !state.started) { App.exitApp(); return; }
+    if (shown('menu')) resumeFromPause(); else openPause();
+  });
+}
 setInterval(save, 5000);
 
 function resize() {
@@ -592,8 +728,10 @@ field.update(state.t, true);
 land.updateSeason(state.t); flowers.update(state.t % 365);
 state.t = doyOf(5, 19) + 16.9 / 24; // 水鏡の夕方
 if (!MANUAL) requestAnimationFrame(frame);
+// web-only:start
 window.__suiden = {
   state, field, setView, setSpeed, startGame, wx, land, scene, camera, renderer, farm,
   step(n = 1, dtMs = 1000 / 30) { for (let i = 0; i < n; i++) frame(lastT + dtMs); },
   refresh() { land.updateSeason(state.t); flowers.update(state.t % 365); field.update(state.t, true); updateWeather(0, true); hudTimer = 0; lastSeasonDay = Math.floor(state.t); },
 };
+// web-only:end

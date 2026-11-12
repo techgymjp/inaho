@@ -443,6 +443,7 @@ export function createField(scene, quality) {
   // 状態: 0=未刈 1=刈った 2=倒伏
   const cut = new Uint8Array(TOTAL);
   const planted = new Uint8Array(TOTAL); // 田植え期間中にプレイヤーが植えた株
+  let harvestExtra = 0;                  // リワード広告で延ばした稲刈りの日数
   const o = new THREE.Object3D();
 
   // ---------- はざ掛け ----------
@@ -704,6 +705,7 @@ export function createField(scene, quality) {
     meltAlong: (ax, az, bx, bz, r) => paint(melt, ax, az, bx, bz, r), meltRatio: () => maskRatio(melt),
     tillRatio: () => maskRatio(till), levelRatio: () => maskRatio(level), fillTill: () => fillMask(till, 255), fillLevel: () => fillMask(level, 255),
     paddyRect, inPaddy(x, z) { for (let p = 0; p < COLS * ROWS; p++) { const r = paddyRect(p); if (x > r.x && x < r.x + r.w && z > r.z && z < r.z + r.d) return true; } return false; },
-    water, cut, planted, hx, hz, isHarvestable: (t) => t >= HARVEST_START && t < HARVEST_END,
+    water, cut, planted, hx, hz, isHarvestable: (t) => t >= HARVEST_START && t < HARVEST_END + harvestExtra,
+    setHarvestExtra(d) { harvestExtra = d; },
   };
 }

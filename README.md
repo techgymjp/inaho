@@ -55,6 +55,30 @@
 - **遠景の山の四季**：冬は雪山、春は残雪、夏は緑、秋は紅葉と初冠雪。
 - 遠景の山は猪苗代から見た磐梯山の姿を参考にしています。
 
+## Android アプリ
+
+パッケージ名 `jp.techgym.inaho`。Capacitor 8 でゲームのファイルをアプリに同梱しています（オフラインで遊べます）。横画面。
+
+- 動作確認用 APK（デバッグ署名・テスト広告。Google Play 版ではありません）
+  - リリース画面：https://github.com/techgymjp/inaho/releases/tag/android-latest
+  - APK 直接：https://github.com/techgymjp/inaho/releases/latest/download/inaho.apk
+  - スマホで読み取り：
+
+    ![APK のリリース画面の QR コード](docs/apk-qr.png)
+
+- `main` に push すると GitHub Actions（`.github/workflows/android.yml`）が APK を作り、上のリリースの APK を差し替えます。
+  GitHub Secrets（`ANDROID_KEYSTORE_BASE64` ほか 3 つ）を登録すると、Google Play 用の署名付き AAB（本番広告）も作り、Artifact `inaho-release-aab` に上げます。
+- 広告（AdMob）：バナーはタイトル・あそびかた・一時停止・結果の画面だけ。全画面広告はプレイ開始・タイトルに戻る・一時停止からの再開・結果から田んぼへ戻る、のたびに表示。
+  リワード広告は、稲刈りの期限が来て稲が残っているときに「広告を見て3日延ばす」（1年に1回）。
+  本番の広告ユニット ID とアプリ ID が届くまでは、本番ビルドでは広告を出しません（`js/ads.js`、`android/app/src/main/res/values/strings.xml`）。
+- アプリでは、戻るボタンで一時停止／再開（タイトルでは終了）、別のアプリに切り替えると自動で一時停止して音を止めます。結果は Android の共有メニューでシェアできます。
+
+```bash
+npm ci
+npm run android:sync   # www/ を作って android/ にコピー（テスト広告）
+npm run android:open   # Android Studio で開く
+```
+
 ## 動かし方
 
 ビルド不要の静的サイトです。ES Modules を使うので、ローカルでは簡単なサーバー経由で開いてください。
@@ -89,5 +113,15 @@ python3 -m http.server 8000
 | `js/farmwork.js` | 農作業イベント |
 | `js/stars.js` | 星空（恒星の位置計算と天の川） |
 | `lib/` | three.js r170（MIT License）を同梱 |
+| `js/ads.js` | AdMob 広告（アプリのときだけ動く） |
+| `scripts/build-web.js` | Web 版・アプリ用のファイルを `www/` にまとめる |
+| `android/` | Android プロジェクト（Capacitor） |
+| `assets/` | アプリのアイコンと起動画面の元画像 |
 
 画質は「メニュー → 画質」で 高 / 軽量 を切り替えられます（スマートフォンは軽量が既定）。
+
+## ライセンス
+
+著作権はテックジム株式会社に帰属します（All rights reserved）。許可なく複製・改変・再配布すること、Web サイトやアプリ（Google Play、App Store など）として公開・販売すること、名前・ロゴ・アイコン・画像を使うことを禁止します。
+テックジムの受講生が学習目的で複製・改変することは許可します（アプリストアでの公開・広告の掲載・販売などの商用利用は不可、著作権表示を残すこと）。
+同梱の three.js は MIT License です。詳しくは [LICENSE](LICENSE) をご覧ください。
