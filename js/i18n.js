@@ -37,7 +37,7 @@ const EN = {
   'tag.info': 'This season (just read)', 'tag.work': 'Farm work (your job)', 'tag.workStart': "Farm work — it's your turn",
   'ev.todo': 'What to do', 'ev.effect': 'Effect', 'ev.when': 'Period', 'ev.start': 'Start',
   // views
-  'view.aze': 'Levee', 'view.drone': 'Sky', 'view.yama': 'Hillside', 'view.kominka': 'Farmhouse', 'view.north': 'Canal',
+  'view.aze': 'Levee', 'view.drone': 'Sky', 'view.yama': 'Hillside', 'view.kominka': 'Farmhouse', 'view.hoshi': 'Night sky', 'view.north': 'Canal',
   // weather
   'wx.clear': 'Sunny', 'wx.cloudy': 'Cloudy', 'wx.rain': 'Rain', 'wx.snow': 'Snow',
   // grades
@@ -66,7 +66,7 @@ const JA = {
   'quality': '画質', 'quality.high': '高', 'quality.low': '軽量', 'quality.switch': '切替',
   'tag.info': 'いまの田んぼ（読むだけ）', 'tag.work': '農作業イベント（あなたの作業）', 'tag.workStart': '農作業イベント　あなたの出番です',
   'ev.todo': 'やること', 'ev.effect': '結果への影響', 'ev.when': '期間', 'ev.start': 'はじめる',
-  'view.aze': '畦道', 'view.drone': '空から', 'view.yama': '里山', 'view.kominka': '古民家', 'view.north': '水路',
+  'view.aze': '畦道', 'view.drone': '空から', 'view.yama': '里山', 'view.kominka': '古民家', 'view.hoshi': '星空', 'view.north': '水路',
   'wx.clear': '晴れ', 'wx.cloudy': 'くもり', 'wx.rain': '雨', 'wx.snow': '雪',
 };
 

@@ -4,6 +4,7 @@ import { createField, FIELD_W, FIELD_D, TOTAL, KG_PER_HILL } from './field.js';
 import { createEffects } from './effects.js';
 import { createFlowers } from './flowers.js';
 import { createFarmwork } from './farmwork.js';
+import { createStarSky } from './stars.js';
 import { createAudio } from './audio.js';
 import { LANG, setLang, t as tr, msg, stageText, sekkiText, fmtDate, fmtMonthDay, applyStatic } from './i18n.js';
 import {
@@ -37,6 +38,7 @@ const field = createField(scene, Q);
 const fx = createEffects(scene);
 const farm = createFarmwork({ scene, field, fx, audio: { flutter: () => audio.flutter && audio.flutter(), crash: () => audio.crash && audio.crash(), thud: () => audio.thud && audio.thud(), sfx: (k, v) => audio.sfx && audio.sfx(k, v) } });
 const flowers = createFlowers(scene);
+const starSky = createStarSky(scene, 37.5);
 const audio = createAudio();
 
 // ---------- 状態 ----------
@@ -68,13 +70,14 @@ const cam = {
   tPos: new THREE.Vector3(), tYaw: 0, tPitch: 0, dragYaw: 0, dragPitch: 0, fov: 55, tFov: 55,
 };
 const VIEWS = {
-  aze: { label: '畦道', pos: [7.5, 3.0, 36.5], yaw: 0.06, pitch: -0.005, fov: 24 }, // 農道の奥の土手から望遠で
+  aze: { label: '畦道', pos: [7.5, 3.0, 36.5], yaw: 0, pitch: -0.005, fov: 24 }, // 真北を向く // 農道の奥の土手から望遠で
   drone: { label: '空から', orbit: true },
   yama: { label: '里山', pos: [-190, 62, 175], look: [0, 0, 0] },
   kominka: { label: '古民家', pos: [-14, 2.6, 7], look: [-62, 4.5, 4], fov: 40 },
+  hoshi: { label: '星空', pos: [7.5, 1.6, 36.5], yaw: 0, pitch: 0.62, fov: 72 },
   north: { label: '水路', pos: [-14, 1.4, -28.2], yaw: Math.PI * 0.82, pitch: -0.04 },
 };
-const VIEW_ORDER = ['aze', 'kominka', 'drone', 'yama', 'north'];
+const VIEW_ORDER = ['aze', 'hoshi', 'kominka', 'drone', 'yama', 'north'];
 function lookFrom(p, target) {
   const dx = target[0] - p[0], dy = target[1] - p[1], dz = target[2] - p[2];
   return { yaw: Math.atan2(dx, -dz), pitch: Math.atan2(dy, Math.hypot(dx, dz)) };
@@ -286,7 +289,7 @@ canvas.addEventListener('pointermove', (e) => {
   } else {
     const dx = e.clientX - pointer.x, dy = e.clientY - pointer.y;
     const k = cam.fov / 55; // 望遠ほどゆっくり回す
-    cam.dragYaw -= dx * 0.004 * k; const tele = !!VIEWS[state.view].fov; // 望遠では足元をのぞき込みすぎないように
+    cam.dragYaw -= dx * 0.004 * k; const tele = (VIEWS[state.view].fov || 55) < 30; // 望遠では足元をのぞき込みすぎないように
     cam.dragPitch = clamp(cam.dragPitch + dy * 0.003 * k, tele ? -0.1 : -0.7, tele ? 0.3 : 0.7);
     cam.yaw -= dx * 0.004 * k; cam.pitch += dy * 0.003 * k; // すぐ反応させる
   }
@@ -435,6 +438,12 @@ function frame(now) {
   updateCamera(dt);
   const light = land.updateSky(sp, mp, wx, dt, time, camera);
   lastDay = light.day;
+  // 本物の星空：日付と時刻から福島（北緯37.5°・東経139.9°）の空を計算
+  {
+    const se = Math.sin(sp.el);
+    starSky.update({ year: state.calYear || new Date().getFullYear(), t: t % 365, lonDeg: 139.9, time, camera,
+      dark: 1 - smooth(-0.2, -0.04, se), cover: wx.cover, moon: light.moonUp, px: renderer.getPixelRatio() });
+  }
 
   // 風
   const wa = Math.sin(time * 0.05) * 0.6 + 0.6;

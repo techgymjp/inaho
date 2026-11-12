@@ -122,32 +122,6 @@ export function createLandscape(scene, renderer, quality) {
   scene.add(sky);
 
   // ---------- 星と月 ----------
-  const starGeo = new THREE.BufferGeometry();
-  const starCount = 2600;
-  const sp = new Float32Array(starCount * 3), sc = new Float32Array(starCount);
-  for (let i = 0; i < starCount; i++) {
-    const u = N.rnd(), v = N.rnd();
-    const th = 2 * Math.PI * u, ph = Math.acos(1 - v * 1.05);
-    const R = 30000;
-    sp.set([R * Math.sin(ph) * Math.cos(th), R * Math.cos(ph), R * Math.sin(ph) * Math.sin(th)], i * 3);
-    sc[i] = Math.pow(N.rnd(), 6) * 2.5 + 0.6;
-  }
-  starGeo.setAttribute('position', new THREE.BufferAttribute(sp, 3));
-  starGeo.setAttribute('size', new THREE.BufferAttribute(sc, 1));
-  const starMat = new THREE.ShaderMaterial({
-    uniforms: { uOpacity: { value: 0 }, uTime: { value: 0 } },
-    vertexShader: `attribute float size; varying float vS; varying float vSeed;
-      void main(){ vS = size; vSeed = position.x*0.013+position.z*0.007; vec4 mv = modelViewMatrix*vec4(position,1.0);
-      gl_Position = projectionMatrix*mv; gl_PointSize = size*1.6; }`,
-    fragmentShader: `uniform float uOpacity; uniform float uTime; varying float vS; varying float vSeed;
-      void main(){ vec2 c = gl_PointCoord-0.5; float d = length(c); float a = smoothstep(0.5,0.0,d);
-      float tw = 0.75+0.25*sin(uTime*3.0+vSeed*50.0);
-      gl_FragColor = vec4(vec3(0.85,0.9,1.0)*a*tw*uOpacity*min(vS,1.6), 1.0); }`,
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
-  });
-  const stars = new THREE.Points(starGeo, starMat);
-  stars.frustumCulled = false;
-  scene.add(stars);
 
   const moonMat = new THREE.ShaderMaterial({
     uniforms: { uSun: { value: new THREE.Vector3() }, uOpacity: { value: 1 } },
@@ -186,7 +160,8 @@ export function createLandscape(scene, renderer, quality) {
         col *= 1.0 - uDark*0.95;
         float dist = length(vW.xz - uCam.xz);
         float fade = 1.0 - smoothstep(12000.0, 30000.0, dist);
-        gl_FragColor = vec4(col, d*fade);
+        // 晴れた夜は雲が少なく、星空が見えるように
+        gl_FragColor = vec4(col, d*fade*mix(0.15 + 0.85*uCover, 1.0, 1.0 - uDark));
         #include <colorspace_fragment>
       }`,
     transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide,
@@ -458,10 +433,6 @@ export function createLandscape(scene, renderer, quality) {
     moon.visible = moonUp > 0.001;
 
     // 星
-    stars.position.copy(camera.position);
-    stars.rotation.y = time * 0.002;
-    starMat.uniforms.uOpacity.value = (1 - smooth(-0.2, -0.04, sinEl)) * (1 - over * 0.95);
-    starMat.uniforms.uTime.value = time;
 
     // 雲
     const cu = cloudMat.uniforms;
@@ -1144,7 +1115,7 @@ function buildCumulus() {
       const a = it.az + time * 0.0006;
       it.sp.position.set(camera.position.x + Math.sin(a) * it.dist, it.alt, camera.position.z - Math.cos(a) * it.dist);
       it.sp.material.color.copy(col);
-      it.sp.material.opacity = THREE.MathUtils.clamp((amount - it.rank) * 6, 0, 1) * (0.4 + 0.6 * day);
+      it.sp.material.opacity = THREE.MathUtils.clamp((amount - it.rank) * 6, 0, 1) * (0.05 + 0.95 * day);
       it.sp.visible = it.sp.material.opacity > 0.01;
     }
   }
