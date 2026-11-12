@@ -294,9 +294,12 @@ export function createAudio() {
         const g = ctx.createGain(); env(g, t0, 0.004, dur, peak * v);
         o.connect(g).connect(sfxOut()); o.start(t0); o.stop(t0 + dur + 0.05);
       };
-      if (kind === 'till') {            // ザクッ（土を掘り返す）
-        noise(0.16, 'bandpass', 700, 0.9, 0.35, 0.003, true);
-        noise(0.09, 'bandpass', 2600, 1.2, 0.12, 0.002, false, now + 0.02);
+      if (kind === 'till') {            // ズシャッ（重たい土を鍬で掘り返す）
+        tone(85, 42, 0.22, 0.55, 'sine');                                  // 土に刃が食い込む低い衝撃
+        noise(0.28, 'lowpass', 320, 0.8, 0.6, 0.006, true);                // 湿った土の重いかたまり
+        noise(0.2, 'bandpass', 520, 1.1, 0.28, 0.01, true, now + 0.04);    // 土がめくれる
+        noise(0.12, 'bandpass', 1400, 1.0, 0.06, 0.004, false, now + 0.07); // 土くれがこぼれる（控えめ）
+        noise(0.18, 'lowpass', 260, 0.7, 0.3, 0.01, true, now + 0.13);     // ドスッと落ちる余韻
       } else if (kind === 'level') {    // チャプッ（泥水をならす）
         const f = noise(0.22, 'bandpass', 900, 2.2, 0.25);
         f.frequency.setValueAtTime(600, now); f.frequency.exponentialRampToValueAtTime(1800, now + 0.15);
