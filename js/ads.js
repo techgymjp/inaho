@@ -14,7 +14,7 @@ window.Ads = (() => {
       // 本番の広告ユニット（AdMob の Android アプリ「水田365日」）。
       // ID が届くまでは空のまま（空の種類は本番ビルドで出さない）
       production: {
-        interstitial: '',
+        interstitial: 'ca-app-pub-6411535997477460/5373589403',
         rewarded: '',
         banner: 'ca-app-pub-6411535997477460/5756732784',
       },
