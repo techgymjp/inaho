@@ -5,6 +5,7 @@ import { createEffects } from './effects.js';
 import { createFlowers } from './flowers.js';
 import { createFarmwork } from './farmwork.js';
 import { createStarSky } from './stars.js';
+import { buzz } from './haptics.js';
 import { createAudio } from './audio.js';
 import { LANG, setLang, t as tr, msg, stageText, sekkiText, fmtDate, fmtMonthDay, applyStatic } from './i18n.js';
 import {
@@ -239,7 +240,7 @@ const swipeRadius = (b) => clamp(camera.position.distanceTo(b) * 0.045, 0.9, 3);
 function doWork(a, b) {
   const n = farm.swipe(a, b, swipeRadius(b), state.t % 365);
   const now = performance.now();
-  if (n && now - lastSwish > 90) { lastSwish = now; if (navigator.vibrate) navigator.vibrate(6); } // 効果音は作業ごとに farmwork 側で鳴らす
+  if (n && now - lastSwish > 90) lastSwish = now; // 効果音と振動は作業ごとに farmwork 側で
 }
 function doCut(a, b) {
   if (!field.isHarvestable(state.t) || state.finalized) return;
@@ -253,7 +254,7 @@ function doCut(a, b) {
   field.countCutCached += ids.length;
   for (let i = 0; i < ids.length; i += 3) fx.burst(field.hx[ids[i]], field.hz[ids[i]], 2);
   const now = performance.now();
-  if (now - lastSwish > 70) { audio.swish(Math.min(1, ids.length / 20 + 0.4)); lastSwish = now; if (navigator.vibrate) navigator.vibrate(8); }
+  if (now - lastSwish > 70) { audio.swish(Math.min(1, ids.length / 20 + 0.4)); lastSwish = now; buzz('harvest'); }
   // ほぼ刈り終えたら（畦ぎわの取り残し数株は手刈りしたことにして）収穫完了
   if (field.countCutCached >= TOTAL * 0.995) {
     const rest = field.cutRemaining();
@@ -353,6 +354,7 @@ function showEventCard(id, ev) {
   state.paused = true;
   ui.pause.textContent = '▶';
   $('eventCard').classList.add('show');
+  buzz('start');
   ui.toast.classList.remove('show');
   audio.chime();
 }

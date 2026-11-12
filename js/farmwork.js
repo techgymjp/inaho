@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { makeNoise } from './noise.js';
 import { toon, hex } from './toon.js';
+import { buzz } from './haptics.js';
 import { smooth, clamp, doyOf, waterLevel, snowCover, PLANT_START, PLANT_END, HARVEST_END, PLOW_DAY, riceGrowth } from './calendar.js';
 import { TOTAL, FIELD_W, FIELD_D, COLS, ROWS, PW, PD, LEVEE } from './field.js';
 
@@ -168,6 +169,7 @@ export function createFarmwork({ scene, field, fx, audio }) {
     f.away = new THREE.Vector3((R() < 0.5 ? -1 : 1) * 120, 30, -150);
     rec.bird.shooed++;
     audio.flutter && audio.flutter();
+    buzz('bird');
   }
 
   // ---------- ビニールハウス（育苗用）：冬は雪下ろしが必要 ----------
@@ -258,7 +260,7 @@ export function createFarmwork({ scene, field, fx, audio }) {
         if (c.y <= ground + 0.15 * c.s) {
           c.y = ground + 0.12 * c.s; c.phase = 'land'; c.life = 0; c.s *= 1.25;
           puff(c.x, ground + 0.2, c.z, 4);
-          if (thudTimer <= 0) { audio.thud && audio.thud(); thudTimer = 0.12; }
+          if (thudTimer <= 0) { audio.thud && audio.thud(); buzz('thud'); thudTimer = 0.12; }
         }
       } else {
         c.life += dt;                                    // 地面でくずれて、雪の山にまぎれる
@@ -416,7 +418,7 @@ export function createFarmwork({ scene, field, fx, audio }) {
     if (houseOn && run && !rec.house.collapsed) {
       const snowing = opts.wx.kind === 'snow' ? opts.wx.precip : 0;
       rec.house.load += snowing * opts.gdt * 0.16;
-      if (rec.house.load >= 1) { rec.house.collapsed = true; events.push('collapse'); audio.crash && audio.crash(); }
+      if (rec.house.load >= 1) { rec.house.collapsed = true; events.push('collapse'); audio.crash && audio.crash(); buzz('crash'); }
       else if (rec.house.load > 0.7 && !rec.house.warned) { rec.house.warned = true; events.push('houseWarn'); }
       if (rec.house.load < 0.5) rec.house.warned = false;
     }
@@ -483,7 +485,7 @@ export function createFarmwork({ scene, field, fx, audio }) {
     let n = 0;
     const ev = active(t);
     const has = (id) => ev.some(e => e.id === id);
-    const snd = (k, c) => { if (c > 0 && audio.sfx) audio.sfx(k, Math.min(1, c / 12)); return c; };
+    const snd = (k, c) => { if (c > 0) { if (audio.sfx) audio.sfx(k, Math.min(1, c / 12)); buzz(k); } return c; };
     if (has('till')) n += snd('till', field.tillAlong(a.x, a.z, b.x, b.z, r * 1.4));
     if (has('level') && waterLevel(t) > 0.5) n += snd('level', field.levelAlong(a.x, a.z, b.x, b.z, r * 1.4));
     if (has('plant')) { const ids = field.plantAlong(a.x, a.z, b.x, b.z, r, t); n += snd('plant', ids.length); for (let i = 0; i < ids.length; i += 6) fx.burst(field.hx[ids[i]], field.hz[ids[i]], 1); }
@@ -514,6 +516,7 @@ export function createFarmwork({ scene, field, fx, audio }) {
     if (rec.house.load <= 0.001) return 0;
     rec.house.load = Math.max(0, rec.house.load - 0.035);
     audio.sfx && audio.sfx('snow', 0.8);
+    buzz('snow');
     rec.house.cleared++;
     spawnChunks(hitP, 2 + Math.round(R() * 2));
     return 1;
