@@ -154,3 +154,13 @@ body.has-banner .startInner, body.has-banner .panel { margin-bottom: 56px; }
   #menu table { margin-bottom: 4px; }
   #result .buttons { display: grid; grid-template-columns: 1fr 1fr 1fr; width: 100%; }
 }
+
+/* 左上の日付・時刻：明るい空や曇り空の上でも読めるよう、半透明の暗い下地と文字の影をつける */
+#hud { padding: 8px 12px 9px; border-radius: 12px; background: var(--glass); border: 1px solid var(--line);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+#hudYear, #hud .row { color: rgba(246,241,228,.88); }
+
+/* あそびかた：説明が長くても「プレイする」「戻る」がいつも見えるよう、説明だけをスクロールさせる */
+#howto .panel { display: flex; flex-direction: column; max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow: hidden; }
+#howto .panel ul { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 4px 0 0; padding-right: 4px; }
+#howto .panel .buttons { flex: 0 0 auto; margin: 10px auto 0; }

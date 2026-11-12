@@ -155,7 +155,8 @@ export function moonPosition(t, year) {
 }
 
 // ---- 天気（年と日から決まる疑似乱数） ----
-function hash(n) { n = (n << 13) ^ n; return ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 0x7fffffff; }
+// 32ビット整数のまま掛け算する（普通の掛け算だと大きな数で精度が落ち、結果がほぼ0に偏って毎日雨になっていた）
+function hash(n) { n = (n << 13) ^ n; n = (Math.imul(n, (Math.imul(Math.imul(n, n), 15731) + 789221) | 0) + 1376312589) & 0x7fffffff; return n / 0x7fffffff; }
 export function weatherOf(doy, year) {
   const r = hash(doy * 7919 + year * 104729);
   const r2 = hash(doy * 3571 + year * 2903 + 17);
