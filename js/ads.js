@@ -11,11 +11,10 @@ window.Ads = (() => {
         rewarded: 'ca-app-pub-3940256099942544/5224354917',
         banner: 'ca-app-pub-3940256099942544/6300978111',
       },
-      // 本番の広告ユニット（AdMob の Android アプリ「水田365日」）。
-      // ID が届くまでは空のまま（空の種類は本番ビルドで出さない）
+      // 本番の広告ユニット（AdMob の Android アプリ「水田365日」）
       production: {
         interstitial: 'ca-app-pub-6411535997477460/5373589403',
-        rewarded: '',
+        rewarded: 'ca-app-pub-6411535997477460/5728812621',
         banner: 'ca-app-pub-6411535997477460/5756732784',
       },
     },
