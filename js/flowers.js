@@ -199,7 +199,7 @@ export function createFlowers(scene) {
 
   // ---------- 柿の木（秋に橙色の実がなる。葉が落ちても実は残る） ----------
   {
-    const trees = [[-56, 16], [-48, -2], [-60, -26], [-22, -37], [30, -38], [-8, RAIL_Z + 18], [62, RAIL_Z + 20], [6, -318], [46, -322]];
+    const trees = [[-56, 16], [-48, -2], [-60, -26], [-22, -41.5], [30, -42], [-8, RAIL_Z + 18], [62, RAIL_Z + 20], [6, -318], [46, -322]];
     const trunkGeo = mergeGeos([
       new THREE.CylinderGeometry(0.2, 0.32, 2.2, 6).translate(0, 1.1, 0),
       new THREE.CylinderGeometry(0.08, 0.16, 2.6, 5).rotateZ(0.65).translate(0.8, 2.8, 0),

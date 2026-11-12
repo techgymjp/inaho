@@ -14,22 +14,23 @@ const FIELD_HALF_W = (3 * 20 + 4 * 0.9) / 2, FIELD_HALF_D = (2 * 24 + 3 * 0.9) /
 export function terrainHeight(x, z) {
   // 盆地（やや東西に長い）
   const r = Math.hypot(x * 0.8, z);
-  const warp = N.fbm(x / 600, z / 600, 3) * 160;
-  const rr = r + warp * smooth(120, 500, r);
-  const rise = smooth(380, 1900, rr);
+  const warp = N.fbm(x / 1600, z / 1600, 3) * 600;
+  const rr = r + warp * smooth(300, 1500, r);
+  // 盆地は直径10km以上。まわりの山並みは2〜7km先から立ち上がる
+  const rise = smooth(1800, 7000, rr);
   let h = BASIN_LEVEL;
   // 盆地の微起伏（田んぼの周りは平ら）
   const nearFlat = smooth(60, 160, r);
   h += nearFlat * (1.5 + N.fbm(x / 90, z / 90, 3) * 2.5) * (1 - rise);
   // 低い里山（丸みのある丘）
   const northH = smooth(0.3, 0.8, -z / Math.max(r, 1));
-  const hills = Math.max(0, N.fbm(x / 380 + 5, z / 380, 3) + 0.15) * 110 * smooth(160, 420, r) * smooth(160, 420, rr) * (1 - 0.85 * northH)
+  const hills = Math.max(0, N.fbm(x / 380 + 5, z / 380, 3) + 0.15) * 55 * smooth(300, 700, r) * smooth(300, 700, rr) * (1 - 0.85 * northH)
     // 北の中景：森におおわれた低い丘の連なり（線路と集落の奥）
     + northH * smooth(1100, 1600, r) * (1 - smooth(3600, 5000, r)) * (22 + 40 * (N.fbm(x / 420 + 2, z / 420, 3) * 0.5 + 0.5));
   // 奥山（なだらかな山並み）。北側は低くして名峰を引き立てる
   const m = N.fbm(x / 1100, z / 1100, 3) * 0.5 + 0.5;
   const north = smooth(0.35, 0.85, -z / Math.max(r, 1));
-  const mountain = smooth(250, 500, r) * Math.pow(rise, 1.2) * (200 + 650 * Math.pow(m, 1.6)) * (1 - 0.97 * north);
+  const mountain = smooth(250, 500, r) * Math.pow(rise, 1.2) * (250 + 750 * Math.pow(m, 1.6)) * (1 - 0.97 * north);
   const base = h + hills + mountain + bandai(x, z) * smooth(200, 900, r);
   // 鉄道の通り道は平らにならす（切通し）。遠くの山にはトンネルで入る
   const corridor = smooth(34, 10, Math.abs(z - RAIL_Z)) * smooth(1500, 1000, Math.abs(x));
@@ -52,6 +53,38 @@ function bandai(x, z) {
   const skirt = 320 * Math.exp(-Math.pow(Math.hypot((x - 900) / 1.6, z + 8800) / 4800, 2)); // 広い裾野
   const bumps = 1 + 0.06 * N.fbm(x / 500, z / 500, 3);
   return (Math.max(main, sub, ridge) + skirt) * bumps;
+}
+
+// ---------- 夜のあかり（共通のマテリアル：夜になると光る） ----------
+const NIGHT = {
+  winOn: new THREE.MeshBasicMaterial({ color: '#2a3138' }),        // 明かりのつく窓
+  lantern: new THREE.MeshBasicMaterial({ color: '#3a3530' }),      // 石灯籠の火袋
+  lampHead: new THREE.MeshBasicMaterial({ color: '#d9dcd6' }),     // 防犯灯
+  shoji: [],                                                       // 古民家・寺の障子（emissive で光らせる）
+};
+const glowTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,240,200,1)'); gr.addColorStop(0.25, 'rgba(255,220,160,0.55)'); gr.addColorStop(1, 'rgba(255,200,120,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+})();
+const glows = [];
+function addGlow(parent, x, y, z, size) {
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
+  sp.position.set(x, y, z); sp.scale.setScalar(size);
+  parent.add(sp); glows.push(sp);
+  return sp;
+}
+const lampLights = [];
+function setNight(n) {
+  const warm = new THREE.Color('#2a3138').lerp(new THREE.Color('#ffd28a'), n);
+  NIGHT.winOn.color.copy(warm);
+  NIGHT.lantern.color.set('#3a3530').lerp(new THREE.Color('#ffb85c'), n);
+  NIGHT.lampHead.color.set('#d9dcd6').lerp(new THREE.Color('#fff6e0').multiplyScalar(1.6), n);
+  NIGHT.shoji.forEach(m => m.emissive.set('#ffb860').multiplyScalar(0.75 * n));
+  glows.forEach(g => (g.material.opacity = n * 0.9));
+  lampLights.forEach(l => (l.intensity = 45 * n));
 }
 
 // 半径 u (−1..1) を中心が細かくなるように引き延ばす
@@ -205,13 +238,14 @@ export function createLandscape(scene, renderer, quality) {
   tGeo.setAttribute('color', new THREE.BufferAttribute(tCol, 3));
   const tMat = toon({ vertexColors: true });
   const terrainGrass = grassTexture();
-  const snowU = { uSnowLine: { value: 5000 }, uWinter: { value: 0 }, uSnowCol: { value: hex('#f2f6fb') } };
+  const snowU = { uSnowLine: { value: 5000 }, uWinter: { value: 0 }, uSnowCol: { value: hex('#f2f6fb') },
+    uGlowCol: { value: new THREE.Color(0, 0, 0) }, uLitAbove: { value: 0 }, uSunDirT: { value: new THREE.Vector3(0, 1, 0) } };
   tMat.onBeforeCompile = (sh) => {
     sh.uniforms.uGrass = { value: terrainGrass };
     Object.assign(sh.uniforms, snowU);
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWp = (modelMatrix*vec4(transformed,1.0)).xyz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp; uniform sampler2D uGrass; uniform float uSnowLine, uWinter; uniform vec3 uSnowCol;\n' + GLSL_NOISE)
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp; uniform sampler2D uGrass; uniform float uSnowLine, uWinter; uniform vec3 uSnowCol; uniform vec3 uGlowCol, uSunDirT; uniform float uLitAbove;\n' + GLSL_NOISE)
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
         // 田んぼの部分は地形をくり抜く
         if (abs(vWp.x) < ${(FIELD_HALF_W).toFixed(2)} && abs(vWp.z) < ${(FIELD_HALF_D).toFixed(2)}) discard;`)
@@ -244,9 +278,39 @@ export function createLandscape(scene, renderer, quality) {
           float forest = smoothstep(0.45, 0.6, vnoise(vWp.xz*0.03));
           float win = uWinter * smoothstep(20.0, 60.0, vWp.y) * mix(1.0, 0.78, forest);
           diffuseColor.rgb = mix(diffuseColor.rgb, uSnowCol, clamp(max(sn, win), 0.0, 1.0));
+        }`)
+      // 盆地がまだ山かげのとき、日の当たる高い斜面だけ朝日・夕日に染まる
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        {
+          vec3 gn = normalize(cross(dFdx(vWp), dFdy(vWp)));
+          if (gn.y < 0.0) gn = -gn;
+          float face = max(dot(gn, uSunDirT), 0.0);
+          float above = smoothstep(uLitAbove - 30.0, uLitAbove + 30.0, vWp.y);
+          totalEmissiveRadiance += diffuseColor.rgb * uGlowCol * above * face;
         }`);
   };
   const terrain = new THREE.Mesh(tGeo, tMat);
+
+  // ---------- 山の稜線の高さ（方位ごとの見かけの高度角）：山あいの日の出・日の入り ----------
+  // 田んぼから見た、方位 0〜359°（北から時計回り）それぞれの稜線の仰角と、その稜線の標高
+  const HZN = new Float32Array(360), HZH = new Float32Array(360);
+  {
+    const eye = BASIN_LEVEL + 1.5;
+    for (let a = 0; a < 360; a++) {
+      const az = a * Math.PI / 180, sx = Math.sin(az), sz = -Math.cos(az);
+      let best = -0.02, bestH = 0;
+      for (let d = 40; d < 26000; d *= 1.035) {
+        const h = terrainHeight(sx * d, sz * d);
+        const ang = Math.atan2(h - eye - d * d / 2 / 6.4e6 * 0.87, d); // 地球の丸みと大気差
+        if (ang > best) { best = ang; bestH = h; }
+      }
+      HZN[a] = best; HZH[a] = bestH;
+    }
+  }
+  const horizonAt = (az) => {
+    const f = ((az * 180 / Math.PI) % 360 + 360) % 360, i = Math.floor(f), k = f - i;
+    return [HZN[i] * (1 - k) + HZN[(i + 1) % 360] * k, HZH[i] * (1 - k) + HZH[(i + 1) % 360] * k];
+  };
   terrain.receiveShadow = true;
   group.add(terrain);
 
@@ -260,6 +324,29 @@ export function createLandscape(scene, renderer, quality) {
 
   // ---------- 北の丘のふもとの集落 ----------
   const hamlet = buildHamlet();
+  // 防犯灯：用水路の向こうの農道沿い（畦道から見える所）
+  {
+    const poleM = toon({ color: '#9a978f' });
+    for (const x of [-48, -12, 24, 60]) {
+      const z = -37;
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 6.5, 6), poleM);
+      pole.position.set(x, BASIN_LEVEL + 3.25, z);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 1.2), poleM);
+      arm.position.set(x, BASIN_LEVEL + 6.1, z + 0.55);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.12, 0.55), NIGHT.lampHead);
+      head.position.set(x, BASIN_LEVEL + 6.0, z + 1.1);
+      group.add(pole, arm, head);
+      addGlow(group, x, BASIN_LEVEL + 5.9, z + 1.1, 3.2);
+      const pl = new THREE.PointLight('#ffe3b0', 0, 26, 1.6);
+      pl.position.set(x, BASIN_LEVEL + 5.7, z + 1.1);
+      group.add(pl); lampLights.push(pl);
+    }
+    // 農道（砂利）
+    const lane = new THREE.Mesh(new THREE.PlaneGeometry(150, 3.2).rotateX(-Math.PI / 2), toon({ color: '#a39a88' }));
+    lane.position.set(6, BASIN_LEVEL + 0.04, -35.5);
+    lane.receiveShadow = true;
+    group.add(lane);
+  }
   group.add(hamlet.group);
 
   // ---------- 鉄道（遠くを走るローカル線） ----------
@@ -344,16 +431,27 @@ export function createLandscape(scene, renderer, quality) {
     // 太陽光
     const warm = smooth(0.0, 0.35, sinEl);
     sun.color.setRGB(1, 0.45 + 0.53 * warm, 0.22 + 0.72 * warm);
-    sun.intensity = 2.6 * sunUp * (1 - over * 0.7);
+    // 山あいの日照：太陽が稜線の上に出ているか（太陽の半径ぶんなめらかに）
+    const [hzEl, hzH] = horizonAt(sunPos.az);
+    const sunVis = smooth(hzEl - 0.0046, hzEl + 0.0046, elS);
+    sun.intensity = 2.6 * sunUp * (1 - over * 0.7) * sunVis;
     sun.position.copy(sunDir).multiplyScalar(300);
     sun.target.position.set(0, 0, 0);
-    sun.castShadow = sunUp > 0.01 && over < 0.85;
+    sun.castShadow = sunUp > 0.01 && over < 0.85 && sunVis > 0.01;
+    // 稜線より上の斜面だけが先に（夕方は最後まで）日に照らされる
+    const litFrac = clamp(elS / Math.max(hzEl, 1e-3));          // 0=地平線、1=稜線の高さ
+    snowU.uLitAbove.value = BASIN_LEVEL + (hzH - BASIN_LEVEL) * (1 - litFrac) * 0.92;
+    snowU.uGlowCol.value.copy(sun.color).multiplyScalar(0.85 * sunUp * (1 - over * 0.7) * (1 - sunVis) * (elS > -0.01 ? 1 : 0));
+    snowU.uSunDirT.value.copy(sunDir);
+    // 夜のあかり：薄暗くなると灯り、明るくなると消える
+    setNight(smooth(0.02, -0.06, sinEl));
 
     // 月
     const moonUp = smooth(-0.02, 0.1, Math.sin(moonPos.el));
     const illum = 0.5 - 0.5 * Math.cos(moonPos.phase * Math.PI * 2);
     moonLight.position.copy(moonDir).multiplyScalar(300);
-    moonLight.intensity = 0.5 * moonUp * illum * (1 - day) * (1 - over * 0.8);
+    const [mzEl] = horizonAt(moonPos.az);
+    moonLight.intensity = 0.5 * moonUp * illum * (1 - day) * (1 - over * 0.8) * smooth(mzEl - 0.005, mzEl + 0.005, moonPos.el);
     moon.position.copy(camera.position).addScaledVector(moonDir, 20000);
     moonMat.uniforms.uSun.value.copy(sunDir);
     moonMat.uniforms.uOpacity.value = moonUp * (1 - over * 0.85) * (1 - day * 0.6);
@@ -388,10 +486,10 @@ export function createLandscape(scene, renderer, quality) {
     hemi.intensity = 1.7 * (0.12 + 0.88 * day) + 0.35 * (1 - day);
     if (day < 0.3) hemi.color.lerp(hex('#3a4e8a'), 1 - day / 0.3);
 
-    return { sunDir, day, sunUp, moonUp: moonUp * illum };
+    return { sunDir, day, sunUp, sunVis, horizon: hzEl, moonUp: moonUp * illum };
   }
 
-  return { group, terrain, sky, sun, updateSeason, updateSky, sunDir, forest, village, railway };
+  return { group, terrain, sky, sun, updateSeason, updateSky, sunDir, forest, village, railway, horizonAt };
 }
 
 // ---------- 杉（まっすぐな幹と、段々に重なる細長い樹冠） ----------
@@ -573,7 +671,8 @@ function buildVillage() {
   // 正面：縁側と障子、土間の入口
   house.add(box(HW * 0.62, 0.12, 1.3, toon({ map: rep(T.board, 1, 6) }), -HW * 0.17, 0.95, HD / 2 + 0.65));
   for (let i = 0; i < 8; i++) {
-    const sh = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 2.1), toon({ map: T.shoji }));
+    const sm = toon({ map: T.shoji }); NIGHT.shoji.push(sm);
+    const sh = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 2.1), sm);
     sh.position.set(-HW / 2 + 0.9 + i * 1.22, 2.1, HD / 2 + 0.03);
     house.add(sh);
   }
@@ -1077,8 +1176,8 @@ function buildHamlet() {
     house.add(box(w + 0.1, 0.5, d + 0.1, toon({ color: '#7d7a73' }), 0, 0.25, 0));          // 基礎
     // 窓（正面と側面）
     for (let k = 0; k < 3; k++) {
-      house.add(box(1.4, 1.1, 0.08, winM, -w / 3 + k * w / 3, 1.6, d / 2 + 0.03));
-      if (two) house.add(box(1.2, 0.9, 0.08, winM, -w / 3 + k * w / 3, 4.2, d / 2 + 0.03));
+      house.add(box(1.4, 1.1, 0.08, R() < 0.6 ? NIGHT.winOn : winM, -w / 3 + k * w / 3, 1.6, d / 2 + 0.03));
+      if (two) house.add(box(1.2, 0.9, 0.08, R() < 0.4 ? NIGHT.winOn : winM, -w / 3 + k * w / 3, 4.2, d / 2 + 0.03));
     }
     const rm = toon({ color: roofCols[(i * 7) % roofCols.length] });
     roofMats.push(rm);
@@ -1104,7 +1203,8 @@ function buildHamlet() {
     for (let k = 0; k <= 6; k++) for (const side of [-1, 1]) temple.add(box(0.45, H, 0.45, pillar, -W / 2 + k * W / 6, 1.2 + H / 2, side * (D / 2 + 0.05)));
     // 正面の格子戸（蔀戸）
     for (let k = 0; k < 5; k++) {
-      const door = new THREE.Mesh(new THREE.PlaneGeometry(W / 6 - 0.5, H - 1.2), toon({ map: shojiTexture() }));
+      const sm = toon({ map: shojiTexture() }); NIGHT.shoji.push(sm);
+      const door = new THREE.Mesh(new THREE.PlaneGeometry(W / 6 - 0.5, H - 1.2), sm);
       door.position.set(-W / 2 + W / 6 * (k + 0.5) + W / 12, 1.2 + (H - 1.2) / 2 + 0.2, D / 2 + 0.08);
       temple.add(door);
     }
@@ -1130,6 +1230,8 @@ function buildHamlet() {
     for (const side of [-1, 1]) {
       const l = new THREE.Group();
       l.add(box(0.9, 0.3, 0.9, stone, 0, 0.15, 0), box(0.35, 1.3, 0.35, stone, 0, 0.95, 0), box(0.8, 0.6, 0.8, stone, 0, 1.9, 0));
+      l.add(box(0.55, 0.4, 0.82, NIGHT.lantern, 0, 1.9, 0), box(0.82, 0.4, 0.55, NIGHT.lantern, 0, 1.9, 0));
+      addGlow(l, 0, 1.95, 0, 2.2);
       const cap = new THREE.Mesh(new THREE.ConeGeometry(0.8, 0.6, 4).rotateY(Math.PI / 4), stone); cap.position.y = 2.5; l.add(cap);
       l.position.set(side * 5, 0, D / 2 + 12);
       temple.add(l);

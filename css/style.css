@@ -104,3 +104,23 @@ body.title #hud, body.title #stageCard, body.title #controls, body.title #yearTr
 body.harvest-season #stageCard { display: none; }
 .workTitle { font-family: var(--serif); font-size: 15px; margin: 16px 0 4px; }
 #resultBody .row small { color: var(--ink-dim); font-weight: 400; }
+
+/* 読むだけの説明と、作業するイベントを見分ける */
+.tag { display: inline-block; font-size: 11px; letter-spacing: .06em; padding: 2px 8px; border-radius: 10px; margin-bottom: 6px; }
+.tag.info { background: rgba(255,255,255,.14); color: var(--ink-dim); }
+.tag.info::before { content: "📖 "; }
+.tag.work { background: var(--gold); color: #2a2208; font-weight: 700; }
+.tag.work::before { content: "👆 "; }
+.tag.work.big { font-size: 13px; padding: 4px 12px; }
+#harvestPanel { border: 2px solid var(--gold); box-shadow: 0 0 0 4px rgba(230,194,90,.18); }
+#harvestPanel.show { animation: workPulse 2.4s ease-in-out infinite; }
+@keyframes workPulse { 0%, 100% { box-shadow: 0 0 0 3px rgba(230,194,90,.15); } 50% { box-shadow: 0 0 0 7px rgba(230,194,90,.32); } }
+#stageCard.flash { animation: stageFlash 1.6s ease-out; }
+@keyframes stageFlash { 0% { background: rgba(255,255,255,.28); } 100% { background: var(--glass); } }
+#eventCard { background: rgba(0,0,0,.45); }
+.panel.event { border: 2px solid var(--gold); background: rgba(28,24,12,.94); }
+.panel.event h2 { font-size: 24px; color: var(--gold); margin: 6px 0 12px; }
+.evRow { display: flex; gap: 10px; align-items: baseline; border-top: 1px solid var(--line); padding: 8px 0; }
+.evKey { flex: 0 0 auto; font-size: 12px; color: var(--ink-dim); min-width: 5.5em; }
+.evRow p { margin: 0; font-size: 15px; line-height: 1.6; }
+#toast.work { border: 2px solid var(--gold); }

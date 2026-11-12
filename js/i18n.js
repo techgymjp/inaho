@@ -19,20 +19,23 @@ const EN = {
   'title.lead2': 'Snowmelt, flooded fields, planting, golden ears of rice.<br>Only the harvest is in your hands.',
   'start.continue': 'Continue', 'start.spring': 'Start from tilling', 'start.today': "Start from today's date",
   'start.harvest': 'Start just before harvest', 'start.jan': "Start from New Year's Day",
-  'start.tiny': '1 day = 1 minute (about 6 hours per year). Fast-forward available. Sound on.',
+  'start.tiny': 'About 1 day per minute (slow by day, fast at night). Fast-forward available. Sound on.',
   'menu.records': 'Harvest records', 'menu.howto': 'How to play',
-  'howto.1': 'A year in the rice paddy passes at 1 day = 1 minute (×10 to ×600 fast-forward).',
+  'howto.1': 'A year in the rice paddy passes at about 1 day per minute — slowly while the sun is up (×0.5) and quickly at night (×2). Fast-forward ×10 to ×600.',
   'howto.2': 'Drag to look around. The view always returns to the same telephoto angle from the levee; "View" switches to other spots.',
   'howto.3': 'Sep 22 – Oct 20 is harvest time. Swipe across the rice to cut it, right from the usual view (dragging from outside the paddies looks around).',
   'howto.4': 'Cut between Sep 28 and Oct 8 for first-grade rice. Rice left too long falls over.',
   'howto.5': 'Farm-work timing follows typical dates in the Aizu region of Fukushima.',
   'howto.6': 'A local train runs along the distant line. At dusk the town chime plays "Going Home".',
+  'howto.8': '📖 "This season" is just an explanation to read. 👆 "Farm work" means it is your job: do what the card says by swiping the paddies.',
   'howto.7': 'Farm work events through the year — tilling, puddling, planting, weeding, stink-bug control, shooing sparrows, and in winter repairing levees, clearing snow off the greenhouse and spreading snow-melt — are all done by swiping the paddies. How well you do changes the harvest.',
   'menu.reset': 'Start over', 'menu.close': 'Close', 'menu.lang': '日本語に切り替え',
   'result.title': "This year's harvest", 'result.back': 'Back to the paddies',
   'harvest.cut': 'Harvested', 'harvest.hint': 'Swipe across the rice to cut it',
   'btn.pause': 'Pause (Space)', 'btn.view': 'View', 'sound.on': 'Sound: on', 'sound.off': 'Sound: off',
   'quality': 'Quality', 'quality.high': 'High', 'quality.low': 'Light', 'quality.switch': 'switch',
+  'tag.info': 'This season (just read)', 'tag.work': 'Farm work (your job)', 'tag.workStart': "Farm work — it's your turn",
+  'ev.todo': 'What to do', 'ev.effect': 'Effect', 'ev.when': 'Period', 'ev.start': 'Start',
   // views
   'view.aze': 'Levee', 'view.drone': 'Sky', 'view.yama': 'Hillside', 'view.kominka': 'Farmhouse', 'view.north': 'Canal',
   // weather
@@ -46,20 +49,23 @@ const JA = {
   'title.lead2': '雪どけ、水張り、田植え、黄金の穂。<br>稲刈りのときだけ、あなたの手で。',
   'start.continue': 'つづきから', 'start.spring': '田起こしから始める', 'start.today': '今日の日付から',
   'start.harvest': '稲刈りの直前から', 'start.jan': '元日から',
-  'start.tiny': '1日＝1分（1年で約6時間）。早送りもできます。音が出ます。',
+  'start.tiny': '1日およそ1分（昼はゆっくり、夜は速く）。早送りもできます。音が出ます。',
   'menu.records': '収穫の記録', 'menu.howto': 'あそびかた',
-  'howto.1': '田んぼの一年が、1日＝1分で進みます（×10〜×600で早送り）。',
+  'howto.1': '田んぼの一年が、1日およそ1分で進みます。日が出ている間はゆっくり（×0.5）、夜は速く（×2）。×10〜×600で早送りもできます。',
   'howto.2': 'ドラッグで見回せます。しばらくするといつもの畦道の望遠アングルに戻ります。「視点」でほかの場所にも切り替えられます。',
   'howto.3': '9月22日〜10月20日は稲刈り。いつもの景色のまま、田んぼの稲をスワイプして刈り取ります（田んぼの外からのドラッグは見回し）。',
   'howto.4': '9月28日〜10月8日に刈ると一等米。遅れると稲が倒れてしまいます。',
   'howto.5': '農作業の時期は会津地方の一般的な目安をもとにしています。',
   'howto.6': '遠くの線路をローカル線が走ります。夕方には「家路」のチャイムが鳴ります。',
+  'howto.8': '📖「いまの田んぼ」は季節の説明で、読むだけです。👆「農作業イベント」が出たら、あなたの作業です。カードの「やること」をして、田んぼをなぞってください。',
   'howto.7': '一年を通して、田起こし・代かき・田植え・除草・カメムシ防除・スズメ追い、冬は畦の補修・ハウスの雪下ろし・融雪剤まきの農作業イベントがあります。どれも田んぼをなぞって行い、出来ばえが収穫に響きます。',
   'menu.reset': '最初からやり直す', 'menu.close': '閉じる', 'menu.lang': 'Switch to English',
   'result.title': '今年の収穫', 'result.back': '田んぼへ戻る',
   'harvest.cut': '刈り取り', 'harvest.hint': '田んぼの稲を指でなぞって刈り取る',
   'btn.pause': '一時停止（Space）', 'btn.view': '視点', 'sound.on': '音：オン', 'sound.off': '音：オフ',
   'quality': '画質', 'quality.high': '高', 'quality.low': '軽量', 'quality.switch': '切替',
+  'tag.info': 'いまの田んぼ（読むだけ）', 'tag.work': '農作業イベント（あなたの作業）', 'tag.workStart': '農作業イベント　あなたの出番です',
+  'ev.todo': 'やること', 'ev.effect': '結果への影響', 'ev.when': '期間', 'ev.start': 'はじめる',
   'view.aze': '畦道', 'view.drone': '空から', 'view.yama': '里山', 'view.kominka': '古民家', 'view.north': '水路',
   'wx.clear': '晴れ', 'wx.cloudy': 'くもり', 'wx.rain': '雨', 'wx.snow': '雪',
 };
@@ -151,8 +157,28 @@ const WORK = {
   levee: J ? ['畦の補修', '畦の穴をなぞってふさぐ', '穴が残ると来年、田んぼの水がもれます'] : ['Repairing levees', 'Swipe the holes in the levees to fill them', "Holes left open will leak water next year"],
   bird: J ? ['スズメ追い', 'スズメの群れをなぞって追い払う', 'スズメは実った稲をついばみます'] : ['Shooing sparrows', 'Swipe the flock to shoo the sparrows', 'Sparrows peck at the ripe rice'],
 };
+const md = (doy) => { const M = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]; let m = 0; while (doy >= M[m]) { doy -= M[m]; m++; } return [m + 1, doy + 1]; };
 const daysLeft = (ev, t) => Math.max(0, Math.ceil(ev.end - t));
 Object.assign(msg, {
+  // 作業イベントの開始カード
+  workCard: (id, ev) => {
+    const eff = {
+      till: J ? 'よく耕すほど収量が増えます（×0.90〜1.00）' : 'More tilling, bigger harvest (×0.90–1.00)',
+      level: J ? '平らにするほど苗の育ちがそろいます（×0.94〜1.00）' : 'Level paddies grow even rice (×0.94–1.00)',
+      plant: J ? '植え残しは遅れて植えられ、その分の収量が15%減ります' : 'Unplanted rows are planted late and yield 15% less',
+      weed: J ? '残った雑草の数だけ収量が減ります（最大−12%）' : 'Each weed left lowers the yield (up to −12%)',
+      bug: J ? '逃したカメムシが多いほど等級が下がります' : 'The more bugs escape, the lower the grade',
+      bird: J ? 'スズメに食べられた分は収量から引かれます' : 'Rice eaten by sparrows is subtracted from the harvest',
+      house: J ? 'ハウスがつぶれると苗を買うことになり、収量−10%' : 'If the greenhouse collapses, seedlings must be bought (−10% yield)',
+      melt: J ? 'まいた所から雪が早くとけ、収量 ×0.98〜1.03' : 'Treated areas melt sooner (yield ×0.98–1.03)',
+      levee: J ? '残った穴は来年の水もれに（収量 最大−6%）' : 'Holes left will leak next year (up to −6% yield)',
+      harvest: J ? '9月28日〜10月8日に刈ると一等米。10月20日を過ぎると残りは倒れます' : 'Cut between Sep 28 and Oct 8 for first-grade rice. After Oct 20 the rest falls over',
+    }[id];
+    const name = id === 'harvest' ? (J ? '稲刈り' : 'Harvest') : WORK[id][0];
+    const todo = id === 'harvest' ? (J ? '田んぼの稲を指でなぞって刈り取る' : 'Swipe across the rice to cut it') : WORK[id][1];
+    const when = ev ? `${fmtMonthDay(...md(ev.start))} 〜 ${fmtMonthDay(...md(ev.end - 1))}` : '';
+    return { name, todo, eff, when };
+  },
   workEvent: (e, r) => {
     if (e === 'collapse') return J ? '<b>ハウスがつぶれてしまいました…</b><br>雪の重みに耐えられませんでした。今年の苗は買い苗でまかないます。' : '<b>The greenhouse collapsed…</b><br>It could not bear the weight of the snow. Seedlings will have to be bought this year.';
     if (e === 'houseWarn') return J ? '<b>ハウスの雪が重くなっています！</b><br>屋根をなぞって雪を下ろしましょう。' : '<b>Heavy snow on the greenhouse!</b><br>Swipe the roof to clear the snow.';

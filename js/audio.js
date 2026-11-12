@@ -215,6 +215,7 @@ export function createAudio() {
     o.connect(og).connect(railGain); o.start(t0); o.stop(t0 + 0.12);
   }
   let clackBuf = null, lastJoint = null;
+  const sfxLast = {};
   // x: 列車の中心位置, dist: カメラからの距離, pan: -1..1, running: 走行中か, speed: m/s, dir: 進行方向
   function train(x, dist, pan, running, speed) {
     if (!enabled) return;
@@ -262,6 +263,52 @@ export function createAudio() {
 
   return {
     init, update, swish, chime, yuyake, train,
+    // 農作業ごとのスワイプ音
+    sfx(kind, strength = 1) {
+      if (!enabled) return;
+      const now = ctx.currentTime;
+      sfxLast[kind] = sfxLast[kind] || 0;
+      if (now - sfxLast[kind] < (kind === 'melt' ? 0.05 : 0.09)) return;
+      sfxLast[kind] = now;
+      const v = Math.min(1, 0.45 + strength * 0.5);
+      const noise = (dur, type, f, q, peak, a = 0.004, brown = false, t0 = now) => {
+        const src = ctx.createBufferSource(); src.buffer = noiseBuffer(dur + 0.05, brown);
+        const fl = ctx.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q;
+        const g = ctx.createGain(); env(g, t0, a, dur, peak * v);
+        src.connect(fl).connect(g).connect(master); src.start(t0); src.stop(t0 + dur + 0.06);
+        return fl;
+      };
+      const tone = (f0, f1, dur, peak, type = 'sine', t0 = now) => {
+        const o = ctx.createOscillator(); o.type = type;
+        o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+        const g = ctx.createGain(); env(g, t0, 0.004, dur, peak * v);
+        o.connect(g).connect(master); o.start(t0); o.stop(t0 + dur + 0.05);
+      };
+      if (kind === 'till') {            // ザクッ（土を掘り返す）
+        noise(0.16, 'bandpass', 700, 0.9, 0.35, 0.003, true);
+        noise(0.09, 'bandpass', 2600, 1.2, 0.12, 0.002, false, now + 0.02);
+      } else if (kind === 'level') {    // チャプッ（泥水をならす）
+        const f = noise(0.22, 'bandpass', 900, 2.2, 0.25);
+        f.frequency.setValueAtTime(600, now); f.frequency.exponentialRampToValueAtTime(1800, now + 0.15);
+        tone(500, 1100, 0.07, 0.05, 'sine', now + 0.03);
+      } else if (kind === 'plant') {    // プスッ（苗を泥にさす）
+        noise(0.05, 'bandpass', 1500, 2, 0.18);
+        tone(320, 140, 0.08, 0.12, 'sine', now + 0.01);
+      } else if (kind === 'weed') {     // ブチッ（雑草を引き抜く）
+        noise(0.04, 'highpass', 3000, 0.7, 0.3, 0.001);
+        noise(0.14, 'bandpass', 500, 1, 0.25, 0.004, true, now + 0.03);
+      } else if (kind === 'bug') {      // パシッ（カメムシを捕まえる）
+        noise(0.035, 'bandpass', 2400, 1.5, 0.45, 0.001);
+        tone(900, 300, 0.05, 0.06, 'triangle');
+      } else if (kind === 'levee') {    // ペタッ（土をたたいてふさぐ）
+        noise(0.08, 'lowpass', 900, 0.8, 0.45, 0.002, true);
+        tone(180, 90, 0.07, 0.15, 'sine');
+      } else if (kind === 'melt') {     // サラサラ（粉をまく）
+        noise(0.18, 'highpass', 5000, 0.7, 0.12, 0.02);
+      } else if (kind === 'snow') {     // ズザッ（屋根の雪をかく）
+        noise(0.2, 'bandpass', 1800, 0.8, 0.22, 0.01);
+      }
+    },
     // 雪のかたまりが地面に落ちる「ドサッ」
     thud() {
       if (!enabled) return;

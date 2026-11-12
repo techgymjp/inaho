@@ -27,11 +27,13 @@
   </header>
 
   <section id="stageCard">
+    <div class="tag info" data-i18n="tag.info">いまの田んぼ（読むだけ）</div>
     <div id="stageName"></div>
     <div id="stageNote"></div>
   </section>
 
   <section id="harvestPanel">
+    <div class="tag work" data-i18n="tag.work">農作業イベント（あなたの作業）</div>
     <div class="hTop"><span><span id="hLabel">刈り取り</span> <b id="hPct">0%</b></span><span id="hKg">0 kg</span></div>
     <div class="hBar"><div id="hFill"></div></div>
     <div class="hBottom"><span id="hGrade"></span></div>
@@ -78,6 +80,7 @@
         <li data-i18n="howto.5"></li>
         <li data-i18n="howto.6"></li>
         <li data-i18n="howto.7"></li>
+        <li data-i18n="howto.8"></li>
       </ul>
       <div class="buttons">
         <button id="btnQuality"></button>
@@ -85,6 +88,17 @@
         <button id="btnReset" class="danger" data-i18n="menu.reset">最初からやり直す</button>
         <button id="btnCloseMenu" class="primary" data-i18n="menu.close">閉じる</button>
       </div>
+    </div>
+  </div>
+
+  <div id="eventCard" class="overlay">
+    <div class="panel event">
+      <div class="tag work big" data-i18n="tag.workStart">農作業イベント　あなたの出番です</div>
+      <h2 id="evTitle"></h2>
+      <div class="evRow"><span class="evKey" data-i18n="ev.todo">やること</span><p id="evTodo"></p></div>
+      <div class="evRow"><span class="evKey" data-i18n="ev.effect">結果への影響</span><p id="evEffect"></p></div>
+      <div class="evRow"><span class="evKey" data-i18n="ev.when">期間</span><p id="evWhen"></p></div>
+      <div class="buttons"><button id="btnEvStart" class="primary" data-i18n="ev.start">はじめる</button></div>
     </div>
   </div>
 

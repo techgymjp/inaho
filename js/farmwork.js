@@ -483,9 +483,10 @@ export function createFarmwork({ scene, field, fx, audio }) {
     let n = 0;
     const ev = active(t);
     const has = (id) => ev.some(e => e.id === id);
-    if (has('till')) n += field.tillAlong(a.x, a.z, b.x, b.z, r * 1.4);
-    if (has('level') && waterLevel(t) > 0.5) n += field.levelAlong(a.x, a.z, b.x, b.z, r * 1.4);
-    if (has('plant')) { const ids = field.plantAlong(a.x, a.z, b.x, b.z, r, t); n += ids.length; for (let i = 0; i < ids.length; i += 6) fx.burst(field.hx[ids[i]], field.hz[ids[i]], 1); }
+    const snd = (k, c) => { if (c > 0 && audio.sfx) audio.sfx(k, Math.min(1, c / 12)); return c; };
+    if (has('till')) n += snd('till', field.tillAlong(a.x, a.z, b.x, b.z, r * 1.4));
+    if (has('level') && waterLevel(t) > 0.5) n += snd('level', field.levelAlong(a.x, a.z, b.x, b.z, r * 1.4));
+    if (has('plant')) { const ids = field.plantAlong(a.x, a.z, b.x, b.z, r, t); n += snd('plant', ids.length); for (let i = 0; i < ids.length; i += 6) fx.burst(field.hx[ids[i]], field.hz[ids[i]], 1); }
     const near = (x, z, rr) => {
       const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz || 1e-6;
       const s2 = clamp(((x - a.x) * dx + (z - a.z) * dz) / L2), ex = x - a.x - dx * s2, ez = z - a.z - dz * s2;
@@ -493,14 +494,14 @@ export function createFarmwork({ scene, field, fx, audio }) {
     };
     if (!rec.skipped.weed && t >= EVENTS[3].start && t < Math.min(HARVEST_END, PLOW_DAY)) {
       const prog = clamp((t - EVENTS[3].start) / (EVENTS[3].end - EVENTS[3].start - 3));
-      weeds.forEach(w => { if (!w.pulled && w.at <= prog && near(w.x, w.z, r + 0.4)) { w.pulled = true; rec.weed.pulled++; n++; fx.burst(w.x, w.z, 4); } });
+      weeds.forEach(w => { if (!w.pulled && w.at <= prog && near(w.x, w.z, r + 0.4)) { w.pulled = true; rec.weed.pulled++; n++; fx.burst(w.x, w.z, 4); snd('weed', 6); } });
     }
-    if (has('melt') && snowCover(t) > 0.2) n += field.meltAlong(a.x, a.z, b.x, b.z, r * 1.4);
+    if (has('melt') && snowCover(t) > 0.2) n += snd('melt', field.meltAlong(a.x, a.z, b.x, b.z, r * 1.4));
     if (has('levee')) {
       const prog = clamp((t - EV.levee.start) / (EV.levee.end - EV.levee.start - 2));
-      holes.forEach(h => { if (!h.fixed && h.at <= prog && near(h.x, h.z, r + 0.5)) { h.fixed = true; rec.levee.fixed++; n++; fx.burst(h.x, h.z, 3); } });
+      holes.forEach(h => { if (!h.fixed && h.at <= prog && near(h.x, h.z, r + 0.5)) { h.fixed = true; rec.levee.fixed++; n++; fx.burst(h.x, h.z, 3); snd('levee', 8); } });
     }
-    for (let i = bugs.length - 1; i >= 0; i--) if (near(bugs[i].x, bugs[i].z, r + 0.6)) { group.remove(bugs[i].sp); bugs.splice(i, 1); rec.bug.caught++; n++; }
+    for (let i = bugs.length - 1; i >= 0; i--) if (near(bugs[i].x, bugs[i].z, r + 0.6)) { fx.burst(bugs[i].x, bugs[i].z, 2); group.remove(bugs[i].sp); bugs.splice(i, 1); rec.bug.caught++; n++; snd('bug', 8); }
     flocks.forEach(f => { if (f.state === 'in' && f.birds.some(bd => near(bd.sp.position.x, bd.sp.position.z, r + 1.5))) { shooFlock(f); n++; } });
     return n;
   }
@@ -512,6 +513,7 @@ export function createFarmwork({ scene, field, fx, audio }) {
     if (!rayTest(ray, t)) return 0;
     if (rec.house.load <= 0.001) return 0;
     rec.house.load = Math.max(0, rec.house.load - 0.035);
+    audio.sfx && audio.sfx('snow', 0.8);
     rec.house.cleared++;
     spawnChunks(hitP, 2 + Math.round(R() * 2));
     return 1;

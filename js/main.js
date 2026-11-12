@@ -35,7 +35,7 @@ const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.15, 6
 const land = createLandscape(scene, renderer, Q);
 const field = createField(scene, Q);
 const fx = createEffects(scene);
-const farm = createFarmwork({ scene, field, fx, audio: { flutter: () => audio.flutter && audio.flutter(), crash: () => audio.crash && audio.crash(), thud: () => audio.thud && audio.thud() } });
+const farm = createFarmwork({ scene, field, fx, audio: { flutter: () => audio.flutter && audio.flutter(), crash: () => audio.crash && audio.crash(), thud: () => audio.thud && audio.thud(), sfx: (k, v) => audio.sfx && audio.sfx(k, v) } });
 const flowers = createFlowers(scene);
 const audio = createAudio();
 
@@ -162,6 +162,7 @@ const ui = {
 };
 let toastTimer = 0;
 function toast(html, sec = 6) {
+  ui.toast.classList.remove('work');
   ui.toast.innerHTML = html;
   ui.toast.classList.add('show');
   toastTimer = sec;
@@ -186,7 +187,8 @@ function updateHUD(tg) {
     state.lastStage = st.name;
     ui.stage.textContent = st.name;
     ui.note.textContent = st.note;
-    if (!first) toast(`<b>${st.name}</b><br>${st.note}`);
+    // 季節の説明は左下のカードだけで静かに知らせる（読むだけ）
+    if (!first) { const c = $('stageCard'); c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); }
   }
   // 作業パネル（稲刈り、またはその時期の農作業）
   const inHarvest = field.isHarvestable(state.t) && !state.finalized;
@@ -235,7 +237,7 @@ const swipeRadius = (b) => clamp(camera.position.distanceTo(b) * 0.045, 0.9, 3);
 function doWork(a, b) {
   const n = farm.swipe(a, b, swipeRadius(b), state.t % 365);
   const now = performance.now();
-  if (n && now - lastSwish > 90) { audio.swish(Math.min(0.8, n / 25 + 0.3)); lastSwish = now; if (navigator.vibrate) navigator.vibrate(6); }
+  if (n && now - lastSwish > 90) { lastSwish = now; if (navigator.vibrate) navigator.vibrate(6); } // 効果音は作業ごとに farmwork 側で鳴らす
 }
 function doCut(a, b) {
   if (!field.isHarvestable(state.t) || state.finalized) return;
@@ -273,7 +275,7 @@ canvas.addEventListener('pointermove', (e) => {
   if (!pointer || pointer.id !== e.pointerId) return;
   if (pointer.cutting) {
     const g = groundPoint(e);
-    if (farm.rayHit(ray, state.t % 365)) { const now = performance.now(); if (now - lastSwish > 90) { audio.swish(0.6); lastSwish = now; } }
+    farm.rayHit(ray, state.t % 365);
     if (g && pointer.g) {
       // 細かく分割して取りこぼしを防ぐ
       const steps = Math.ceil(pointer.g.distanceTo(g) / 0.5);
@@ -336,6 +338,34 @@ function showResult(rec, lost) {
   $('result').classList.add('show');
 }
 
+// ---------- 農作業イベントの開始カード：時間を止めて、やることをはっきり伝える ----------
+let evPausedBefore = false;
+function showEventCard(id, ev) {
+  const c = msg.workCard(id, ev);
+  $('evTitle').textContent = c.name;
+  $('evTodo').textContent = c.todo;
+  $('evEffect').textContent = c.eff;
+  $('evWhen').textContent = c.when;
+  const open = $('eventCard').classList.contains('show');
+  if (!open) evPausedBefore = state.paused;   // 2枚続けて開いても、元の一時停止状態を覚えておく
+  state.paused = true;
+  ui.pause.textContent = '▶';
+  $('eventCard').classList.add('show');
+  ui.toast.classList.remove('show');
+  audio.chime();
+}
+$('btnEvStart').onclick = () => {
+  $('eventCard').classList.remove('show');
+  state.paused = evPausedBefore;
+  ui.pause.textContent = state.paused ? '▶' : '❚❚';
+};
+
+// 時間の進み方：日が出ている間はゆっくり（×0.5）、夜は速く（×2）。薄明でなめらかに切り替え
+function dayRate(t) {
+  const el = sunPosition(t % 365).el;
+  return 2 + (0.5 - 2) * smooth(-0.1, 0.05, Math.sin(el));
+}
+
 // ---------- ループ ----------
 let lastT = performance.now(), time = 0, seasonTimer = 0, lastSeasonDay = -1, lastLayoutQ = -1;
 const windDir = new THREE.Vector2(0.8, 0.6);
@@ -358,7 +388,7 @@ function frame(now) {
   time += dt;
   let gdt = 0;
   if (state.started && !state.paused) {
-    gdt = dt * state.speed / 60;
+    gdt = dt * state.speed / 60 * dayRate(state.t);
     const before = state.t;
     state.t += gdt;
     // 稲刈りの季節に入ったら等速に戻す
@@ -366,7 +396,7 @@ function frame(now) {
       if (state.speed > 1) setSpeed(1);
       if (!state.harvestPrompted) {
         state.harvestPrompted = true;
-        toast(msg.harvestStart(), 9);
+        showEventCard('harvest', { start: HARVEST_START, end: HARVEST_END });
       }
     }
     if (state.t >= HARVEST_END && state.t < 365 && !state.finalized) finalizeHarvest(true);
@@ -383,12 +413,11 @@ function frame(now) {
   tg = updateWeather(gdt);
   {
     const fr = farm.update(dt, t % 365, time, { running: state.started && !state.paused, harvestDone: state.finalized, wx, gdt, day: lastDay });
-    if (state.started) for (const e of fr.events) toast(msg.workEvent(e, farm.rec), 8);
+    if (state.started) for (const e of fr.events) { toast(msg.workEvent(e, farm.rec), 8); ui.toast.classList.add('work'); }
     if (state.started) for (const ev of fr.started) {
       if (ev.id === 'bird' && state.finalized) continue;
       if (state.speed > 1) setSpeed(1);
-      toast(msg.workStart(ev.id), 9);
-      audio.chime();
+      showEventCard(ev.id, ev);
     }
   }
 
@@ -412,7 +441,7 @@ function frame(now) {
   const wa = Math.sin(time * 0.05) * 0.6 + 0.6;
   windDir.set(Math.cos(wa), Math.sin(wa));
   const wind = wx.wind * (0.8 + 0.4 * Math.sin(time * 0.13));
-  field.tick(time, wind, windDir, light.sunDir, camera);
+  field.tick(time, wind, windDir, light.sunDir, camera, light.sunVis);
   land.railway.update(dt, (t % 1) * 24, light.day);
   {
     // 電車の音：カメラからの距離と左右の位置
@@ -472,13 +501,19 @@ function startGame(opt) {
   field.update(state.t, true);
   land.updateSeason(state.t); flowers.update(state.t % 365);
   state.started = true;
+  // 作業期間の途中から始めたときも、やることをはっきり見せる
+  setTimeout(() => {
+    const t0 = state.t % 365;
+    if ($('eventCard').classList.contains('show')) return;
+    if (field.isHarvestable(t0) && !state.finalized) showEventCard('harvest', { start: HARVEST_START, end: HARVEST_END });
+    else { const act = farm.active(t0)[0]; if (act) showEventCard(act.id, act); }
+  }, 600);
   state.lastStage = '';
   $('start').classList.remove('show');
   document.body.classList.remove('title');
   audio.init();
   ui.sound.textContent = tr('sound.on');
   updateHUD(weatherTarget(state.t));
-  { const st = stageText(stageOf(Math.floor(state.t) % 365)); toast(`<b>${st.name}</b><br>${st.note}`, 7); }
   save();
 }
 

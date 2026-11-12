@@ -680,12 +680,13 @@ export function createField(scene, quality) {
     till.t.needsUpdate = level.t.needsUpdate = true; lastLayoutKey = '';
   }
 
-  function tick(time, wind, windDir, sunDir, camera) {
+  function tick(time, wind, windDir, sunDir, camera, sunVis = 1) {
     uniforms.uTime.value = time;
     uniforms.uWind.value = wind;
     uniforms.uWindDir.value.copy(windDir);
     water.material.uniforms.time.value = time * 0.25 * (0.3 + wind);
     water.material.uniforms.sunDirection.value.copy(sunDir);
+    water.material.uniforms.sunColor.value.setScalar(sunVis); // 山かげの間は水面に日がささない
     water.material.uniforms.distortionScale.value = 0.3 + wind * 1.6;
     water.material.uniforms.eye.value.copy(camera.position);
   }
