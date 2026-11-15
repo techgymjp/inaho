@@ -38,7 +38,7 @@ if (app) {
       if (!re) continue;
       const text = fs.readFileSync(file, 'utf8').replace(re, '');
       fs.writeFileSync(file, text);
-      if (/web-only/.test(text)) problems.push(path.relative(out, file));
+      if (/web-only|play\.google\.com|Google Play/.test(text)) problems.push(path.relative(out, file)); // 他ストアへのリンクも残さない
     }
   };
   walk(out);

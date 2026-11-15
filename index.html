@@ -71,6 +71,9 @@
         <button id="btnHowto" data-i18n="menu.howto">あそびかた</button>
       </div>
       <p class="tiny" data-i18n="start.tiny">1日およそ1分（昼はゆっくり、夜は速く）。音が出ます。</p>
+      <!-- web-only -->
+      <p class="storeLink"><a href="https://play.google.com/store/apps/details?id=jp.techgym.inaho" target="_blank" rel="noopener"><span class="ja">▶ Android アプリ版（Google Play）</span><span class="en">▶ Get the Android app (Google Play)</span></a></p>
+      <!-- /web-only -->
       <p class="loadingNote" data-i18n="loading">読み込み中…</p>
       <p class="tiny bootError" id="bootError" hidden></p>
       <p class="tiny footer"><span id="appVersion"></span> ・ <a id="privacyLink" href="https://techgym.jp/privacy-policy/" target="_blank" rel="noopener" data-i18n="privacy">プライバシーポリシー</a><span id="adPrivacy" hidden> ・ <a href="#" id="adPrivacyLink" data-i18n="adPrivacy">広告の設定</a></span></p>
@@ -151,6 +154,14 @@
   <noscript>このゲームを遊ぶには JavaScript と WebGL が必要です。</noscript>
   <!-- web-only -->
   <style>
+    /* Google Play へのリンク（Web 版だけ。アプリのビルドでは取り除く） */
+    .storeLink { margin: 4px 0 8px; font-size: 14px; }
+    .storeLink a { display: inline-block; padding: 7px 16px; border-radius: 18px; border: 1px solid rgba(230,194,90,.7);
+      background: rgba(20,24,18,.55); color: #f6e7b8; text-decoration: none; }
+    .storeLink .en { display: none; }
+    html[lang="en"] .storeLink .ja { display: none; }
+    html[lang="en"] .storeLink .en { display: inline; }
+    @media (max-height: 500px) { .storeLink { margin: 2px 0 4px; font-size: 12px; } .storeLink a { padding: 4px 12px; } }
     /* スマホの縦画面（Web 版）：なぞり方の案内は、右下の作業パネルのすぐ上に1行で出す */
     @media (max-width: 560px) {
       #swipeHint { left: 50%; right: auto; transform: translateX(-50%); max-width: calc(100vw - 32px);
