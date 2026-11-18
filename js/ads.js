@@ -13,9 +13,9 @@ window.Ads = (() => {
       },
       // 本番の広告ユニット（AdMob の Android アプリ「水田365日」）
       production: {
-        interstitial: 'ca-app-pub-6411535997477460/5373589403',
-        rewarded: 'ca-app-pub-6411535997477460/5728812621',
-        banner: 'ca-app-pub-6411535997477460/5756732784',
+        interstitial: 'ca-app-pub-6411535997477460/6355244996',
+        rewarded: 'ca-app-pub-6411535997477460/8733996320',
+        banner: 'ca-app-pub-6411535997477460/1294490002',
       },
     },
     ios: {
